@@ -33,3 +33,6 @@ __pycache__/
 # ===== OS =====
 .DS_Store
 Thumbs.db
+
+# Deploy arxivi
+*.tar.gz
