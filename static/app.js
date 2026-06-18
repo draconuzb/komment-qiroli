@@ -1,0 +1,450 @@
+"use strict";
+
+const STYLE_META = {
+  yumor:  { label: "😄 Yumor / Sarkazm", short: "😄", badge: "badge--yumor", cls: "yumor" },
+  aqlli:  { label: "🧠 Aqlli burchak",   short: "🧠", badge: "badge--aqlli", cls: "aqlli" },
+  bahsli: { label: "🔥 Bahsli",          short: "🔥", badge: "badge--bahsli", cls: "bahsli" },
+};
+const RING_C = 2 * Math.PI * 16; // r=16
+
+let state = { mediaId: null, url: "", comments: null, accounts: [] };
+
+const $ = (id) => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  let data = {};
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) {
+    const err = new Error(data.detail || `Xato (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+let toastTimer;
+function toast(msg, kind = "info") {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = `toast ${kind}`;
+  t.style.animation = "none"; void t.offsetWidth; t.style.animation = "";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), 5200);
+}
+
+function setLoading(btn, on) { btn.classList.toggle("loading", on); btn.disabled = on; }
+
+// ---------- Theme ----------
+function initTheme() {
+  const saved = localStorage.getItem("kq-theme") || "light";
+  document.documentElement.dataset.theme = saved;
+  $("theme-toggle").onclick = () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("kq-theme", next);
+  };
+}
+
+// ---------- Count-up ----------
+function animateCount(el, to) {
+  const from = parseInt(el.textContent, 10) || 0;
+  if (from === to) { el.textContent = to; return; }
+  const dur = 700, start = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - start) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (to - from) * eased);
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// global gradient def for rings
+function injectRingGradient() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "0"); svg.setAttribute("height", "0");
+  svg.style.position = "absolute";
+  svg.innerHTML = `<defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#7c5cff"/><stop offset="100%" stop-color="#d6457b"/></linearGradient></defs>`;
+  document.body.appendChild(svg);
+}
+
+// ---------- Status ----------
+async function loadStatus() {
+  const s = await api("/api/status");
+  if (s.auth_required && !s.authed) {
+    $("login-overlay").classList.remove("hidden");
+    $("app").classList.add("hidden");
+    return false;
+  }
+  $("login-overlay").classList.add("hidden");
+  $("app").classList.remove("hidden");
+
+  state.accounts = s.accounts || [];
+  renderAccounts(state.accounts);
+  renderProviders(s.providers || [], s.default_provider);
+  renderPickAccounts(state.accounts);
+
+  const n = state.accounts.length;
+  $("accounts-count").textContent = `${n} akkaunt`;
+  $("pill-accounts").classList.toggle("online", n > 0);
+
+  // stats
+  animateCount($("stat-accounts"), n);
+  animateCount($("stat-today"), state.accounts.reduce((a, x) => a + (x.daily_count || 0), 0));
+  animateCount($("stat-ai"), (s.providers || []).length);
+  return true;
+}
+
+function renderAccounts(accounts) {
+  const box = $("accounts-list");
+  if (!accounts.length) {
+    box.innerHTML = '<p class="muted empty">Hali akkaunt qo\'shilmagan. Quyidan qo\'shing.</p>';
+    return;
+  }
+  box.innerHTML = "";
+  accounts.forEach((a, idx) => {
+    const pct = a.daily_limit ? Math.min(1, a.daily_count / a.daily_limit) : 0;
+    const row = document.createElement("div");
+    row.className = "account-row";
+    row.style.animationDelay = `${idx * 50}ms`;
+    row.innerHTML = `
+      <span class="acc-name"><span class="dot"></span>@${a.username}</span>
+      <div class="acc-meta">
+        <span class="acc-usage">${a.daily_count} / ${a.daily_limit}</span>
+        <svg class="ring" width="40" height="40" viewBox="0 0 40 40">
+          <circle class="ring-bg" cx="20" cy="20" r="16"/>
+          <circle class="ring-fg" cx="20" cy="20" r="16"
+            stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}"/>
+        </svg>
+        <button class="acc-remove" title="O'chirish">×</button>
+      </div>`;
+    row.querySelector(".acc-remove").onclick = () => doRemoveAccount(a.username);
+    box.appendChild(row);
+    // animate ring after paint
+    const fg = row.querySelector(".ring-fg");
+    requestAnimationFrame(() => { fg.style.strokeDashoffset = (RING_C * (1 - pct)).toFixed(1); });
+  });
+}
+
+function renderProviders(providers, defaultId) {
+  const sel = $("provider-select");
+  sel.innerHTML = "";
+  if (!providers.length) {
+    sel.innerHTML = '<option value="">(API kaliti yo\'q)</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  for (const p of providers) {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = `${p.name} · ${p.model}`;
+    if (p.id === defaultId) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function renderPickAccounts(accounts) {
+  const box = $("pick-accounts");
+  if (!accounts.length) { box.innerHTML = '<p class="muted">Avval yuqorida akkaunt qo\'shing.</p>'; return; }
+  box.innerHTML = "";
+  for (const a of accounts) {
+    const label = document.createElement("label");
+    label.className = "pick-item";
+    label.innerHTML = `<input type="checkbox" value="${a.username}" checked /> @${a.username}`;
+    box.appendChild(label);
+  }
+}
+
+const selectedUsernames = () =>
+  [...document.querySelectorAll("#pick-accounts input:checked")].map((c) => c.value);
+
+// ---------- Login ----------
+async function doLogin() {
+  $("login-error").textContent = "";
+  try {
+    await api("/api/login", { method: "POST", body: JSON.stringify({ password: $("login-password").value }) });
+    await loadStatus();
+    await loadHistory();
+  } catch (e) { $("login-error").textContent = e.message; }
+}
+async function doLogout() { await api("/api/logout", { method: "POST" }); location.reload(); }
+
+// ---------- Accounts add/remove ----------
+function refreshAccountsUI() {
+  renderAccounts(state.accounts);
+  renderPickAccounts(state.accounts);
+  $("accounts-count").textContent = `${state.accounts.length} akkaunt`;
+  $("pill-accounts").classList.toggle("online", state.accounts.length > 0);
+  animateCount($("stat-accounts"), state.accounts.length);
+  animateCount($("stat-today"), state.accounts.reduce((a, x) => a + (x.daily_count || 0), 0));
+}
+
+async function doAddAccount() {
+  const sid = $("sessionid-input").value.trim();
+  if (!sid) { toast("sessionid kiriting", "err"); return; }
+  const btn = $("ig-add-btn");
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid }) });
+    $("sessionid-input").value = "";
+    toast("Akkaunt qo'shildi: @" + res.username, "ok");
+    state.accounts = res.accounts;
+    refreshAccountsUI();
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function doRemoveAccount(username) {
+  if (!confirm(`@${username} o'chirilsinmi?`)) return;
+  try {
+    const res = await api(`/api/accounts/${encodeURIComponent(username)}`, { method: "DELETE" });
+    state.accounts = res.accounts;
+    refreshAccountsUI();
+    toast(`@${username} o'chirildi`, "info");
+  } catch (e) { toast(e.message, "err"); }
+}
+
+// ---------- Generate ----------
+async function doGenerate() {
+  const text = $("input-text").value.trim();
+  if (!text) { toast("Avval havola yoki mavzu kiriting", "err"); return; }
+  const provider = $("provider-select").value;
+  if (!provider) { toast("AI provayder yo'q — .env'da API kalit qo'shing", "err"); return; }
+
+  const btn = $("generate-btn");
+  setLoading(btn, true);
+  $("generate-hint").textContent = "O'qilmoqda va kommentlar yaratilmoqda...";
+  try {
+    const data = await api("/api/generate", { method: "POST", body: JSON.stringify({ text, provider }) });
+    state.mediaId = data.media_id; state.url = data.url; state.comments = data.comments;
+    renderResults(data);
+    $("results").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); $("generate-hint").textContent = ""; }
+}
+
+function renderResults(data) {
+  $("results").classList.remove("hidden");
+  $("desc-text").textContent = data.description;
+  $("pick-accounts-card").classList.toggle("hidden", !data.has_media);
+
+  const grid = $("comments-grid");
+  grid.innerHTML = "";
+  ["yumor", "aqlli", "bahsli"].forEach((key, i) => {
+    const meta = STYLE_META[key];
+    const card = document.createElement("div");
+    card.className = "comment-card";
+    card.style.setProperty("--i", i);
+    card.innerHTML = `
+      <span class="badge ${meta.badge}">${meta.label}</span>
+      <p></p>
+      <div class="comment-actions">
+        <button class="btn btn--ghost btn--sm" data-act="copy">Nusxalash</button>
+        <button class="btn btn--primary btn--sm" data-act="post" ${data.has_media ? "" : "disabled"}>
+          ${data.has_media ? "Joylash" : "Havola yo'q"}
+        </button>
+      </div>`;
+    card.querySelector("p").textContent = data.comments[key];
+    card.querySelector('[data-act="copy"]').onclick = () => {
+      navigator.clipboard.writeText(data.comments[key]); toast("Nusxalandi", "ok");
+    };
+    if (data.has_media) {
+      const pb = card.querySelector('[data-act="post"]');
+      pb.onclick = () => doPost(key, data.comments[key], pb);
+    }
+    grid.appendChild(card);
+  });
+}
+
+// ---------- Post ----------
+async function doPost(style, text, btn) {
+  const usernames = selectedUsernames();
+  if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/post", {
+      method: "POST",
+      body: JSON.stringify({ media_id: state.mediaId, style, text, url: state.url, usernames }),
+    });
+    const ok = res.results.filter((r) => r.ok);
+    const fail = res.results.filter((r) => !r.ok);
+    state.accounts = res.accounts;
+    refreshAccountsUI();
+
+    if (ok.length) {
+      btn.classList.remove("btn--primary", "loading");
+      btn.classList.add("btn--success");
+      btn.textContent = `✓ ${ok.length} akkaunt`;
+      btn.disabled = true;
+    } else setLoading(btn, false);
+
+    if (fail.length) {
+      toast(`${ok.length} ta joylandi, ${fail.length} xato: ${fail.map((f) => "@" + f.username + " — " + f.error).join("; ")}`,
+            ok.length ? "info" : "err");
+    } else toast(`${ok.length} ta akkauntdan joylandi`, "ok");
+    loadHistory();
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err"); setLoading(btn, false);
+  }
+}
+
+// ---------- History + distribution ----------
+async function loadHistory() {
+  try {
+    const { items } = await api("/api/history");
+    animateCount($("stat-history"), items.length);
+    renderDistribution(items);
+
+    const list = $("history-list");
+    if (!items.length) { list.innerHTML = '<p class="muted empty">Hozircha bo\'sh.</p>'; return; }
+    list.innerHTML = "";
+    items.forEach((it, i) => {
+      const meta = STYLE_META[it.style];
+      const row = document.createElement("div");
+      row.className = "history-item";
+      row.style.animationDelay = `${Math.min(i, 10) * 35}ms`;
+      row.innerHTML = `
+        <span class="badge ${meta ? meta.badge : "badge--neutral"}">${meta ? meta.short : it.style}</span>
+        <div class="h-body">
+          <div class="h-text"></div>
+          <div class="meta">${it.username ? "@" + it.username + " · " : ""}${it.time}</div>
+        </div>`;
+      row.querySelector(".h-text").textContent = it.text;
+      list.appendChild(row);
+    });
+  } catch (_) {}
+}
+
+function renderDistribution(items) {
+  const box = $("dist");
+  if (!items.length) { box.innerHTML = ""; return; }
+  const counts = { yumor: 0, aqlli: 0, bahsli: 0 };
+  items.forEach((it) => { if (counts[it.style] !== undefined) counts[it.style]++; });
+  const max = Math.max(1, ...Object.values(counts));
+  box.innerHTML = "";
+  for (const key of ["yumor", "aqlli", "bahsli"]) {
+    const meta = STYLE_META[key];
+    const row = document.createElement("div");
+    row.className = "dist-row";
+    row.innerHTML = `
+      <span class="lbl">${meta.short} ${key}</span>
+      <span class="dist-track"><span class="dist-fill ${meta.cls}"></span></span>
+      <span class="val">${counts[key]}</span>`;
+    box.appendChild(row);
+    const fill = row.querySelector(".dist-fill");
+    requestAnimationFrame(() => { fill.style.width = (counts[key] / max * 100) + "%"; });
+  }
+}
+
+// ---------- Sozlamalar ----------
+const SET_FIELDS = [
+  "claude_model", "groq_model", "mistral_model",
+  "max_comments_per_day", "min_seconds_between_comments",
+  "random_delay_min", "random_delay_max",
+];
+const SECRET_STATE = {
+  claude: "anthropic_api_key_set",
+  groq: "groq_api_key_set",
+  mistral: "mistral_api_key_set",
+};
+
+function setProvState(prov, set) {
+  const el = $("state-" + prov);
+  if (!el) return;
+  el.textContent = set ? "● ulangan" : "● yo'q";
+  el.className = "prov-state " + (set ? "on" : "off");
+}
+
+async function openSettings() {
+  try {
+    const data = await api("/api/settings");
+    SET_FIELDS.forEach((k) => { const el = $("set-" + k); if (el && data[k] != null) el.value = data[k]; });
+    // maxfiy kalit inputlari bo'sh, holat span'lar ko'rsatadi
+    ["anthropic_api_key", "groq_api_key", "mistral_api_key", "panel_password"].forEach((k) => {
+      const el = $("set-" + k); if (el) el.value = "";
+    });
+    for (const [prov, key] of Object.entries(SECRET_STATE)) setProvState(prov, !!data[key]);
+    $("settings-msg").textContent = "";
+    $("settings-overlay").classList.remove("hidden");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  }
+}
+
+function closeSettings() { $("settings-overlay").classList.add("hidden"); }
+
+async function saveSettings() {
+  const btn = $("settings-save");
+  setLoading(btn, true);
+  const payload = {};
+  SET_FIELDS.forEach((k) => { const el = $("set-" + k); if (el) payload[k] = el.value; });
+  ["anthropic_api_key", "groq_api_key", "mistral_api_key", "panel_password"].forEach((k) => {
+    const v = $("set-" + k).value.trim();
+    if (v) payload[k] = v; // bo'sh bo'lsa yubormaymiz (eskisi saqlanadi)
+  });
+  try {
+    await api("/api/settings", { method: "POST", body: JSON.stringify(payload) });
+    toast("Sozlamalar saqlandi", "ok");
+    closeSettings();
+    await loadStatus();   // provayderlar/limit yangilanadi
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function testProvider(prov, btn) {
+  const keyEl = $("set-" + (prov === "claude" ? "anthropic" : prov) + "_api_key");
+  const modelEl = $("set-" + (prov === "claude" ? "claude" : prov) + "_model");
+  setLoading(btn, true);
+  setProvState(prov, false);
+  $("state-" + prov).textContent = "tekshirilmoqda…";
+  $("state-" + prov).className = "prov-state";
+  try {
+    const res = await api("/api/settings/test", {
+      method: "POST",
+      body: JSON.stringify({ provider: prov, api_key: keyEl ? keyEl.value.trim() : "", model: modelEl ? modelEl.value.trim() : "" }),
+    });
+    $("state-" + prov).textContent = "✓ ishlaydi";
+    $("state-" + prov).className = "prov-state on";
+    toast(res.message, "ok");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    $("state-" + prov).textContent = "✕ xato";
+    $("state-" + prov).className = "prov-state off";
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+// ---------- Wire up ----------
+initTheme();
+injectRingGradient();
+$("login-btn").onclick = doLogin;
+$("login-password").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+$("logout-btn").onclick = doLogout;
+$("ig-add-btn").onclick = doAddAccount;
+$("sessionid-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doAddAccount(); });
+$("generate-btn").onclick = doGenerate;
+$("refresh-history").onclick = loadHistory;
+$("settings-toggle").onclick = openSettings;
+$("settings-close").onclick = closeSettings;
+$("settings-cancel").onclick = closeSettings;
+$("settings-save").onclick = saveSettings;
+$("settings-overlay").addEventListener("click", (e) => { if (e.target.id === "settings-overlay") closeSettings(); });
+document.querySelectorAll(".prov-test").forEach((b) => { b.onclick = () => testProvider(b.dataset.prov, b); });
+$("toggle-all").onclick = () => {
+  const boxes = [...document.querySelectorAll("#pick-accounts input")];
+  const allOn = boxes.every((b) => b.checked);
+  boxes.forEach((b) => (b.checked = !allOn));
+};
+
+(async () => { const ok = await loadStatus(); if (ok) loadHistory(); })();

@@ -1,0 +1,29 @@
+# ===== Maxfiy / runtime fayllar (HECH QACHON commit qilinmasin) =====
+.env
+settings.json
+accounts.json
+ig_session.json
+ig_user.txt
+daily_counter.json
+history.json
+sessions/
+*.sid
+
+# ===== Python =====
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ===== Muhit / IDE =====
+.idea/
+.vscode/
+*.log
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
