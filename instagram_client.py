@@ -25,9 +25,9 @@ except Exception:  # eski/yangi versiyalar uchun zaxira
 import config
 import settings
 
-_SESSIONS_DIR = "sessions"
-_ACCOUNTS_FILE = "accounts.json"
-_COUNTER_FILE = "daily_counter.json"
+_SESSIONS_DIR = os.path.join(config.DATA_DIR, "sessions")
+_ACCOUNTS_FILE = os.path.join(config.DATA_DIR, "accounts.json")
+_COUNTER_FILE = os.path.join(config.DATA_DIR, "daily_counter.json")
 
 _clients: dict[str, Client] = {}      # username -> tirik Client (kesh)
 _last_ts: dict[str, float] = {}       # username -> oxirgi komment vaqti

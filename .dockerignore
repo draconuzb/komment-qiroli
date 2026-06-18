@@ -1,0 +1,20 @@
+# Image ichiga maxfiy/keraksiz narsalar tushmasin
+.venv/
+venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.env
+data/
+sessions/
+settings.json
+accounts.json
+history.json
+daily_counter.json
+ig_session.json
+ig_user.txt
+*.sid
+*.log
+README.md
+DEPLOY.md

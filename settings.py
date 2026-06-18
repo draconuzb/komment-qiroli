@@ -9,7 +9,7 @@ import os
 
 import config
 
-_FILE = "settings.json"
+_FILE = os.path.join(config.DATA_DIR, "settings.json")
 
 # Maxfiy maydonlar — frontendga real qiymat qaytarilmaydi, faqat "o'rnatilgan/yo'q".
 _SECRET_KEYS = {"anthropic_api_key", "groq_api_key", "mistral_api_key", "panel_password"}

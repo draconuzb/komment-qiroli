@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: komment-qiroli
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data    # sessiyalar, sozlamalar, tarix shu yerda saqlanadi
+    restart: unless-stopped

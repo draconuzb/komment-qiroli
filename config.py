@@ -5,6 +5,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Runtime ma'lumotlar papkasi (sessiyalar, sozlamalar, tarix). Docker'da volume bilan
+# saqlab qolish uchun shu papkaga yoziladi. Lokalda standart — joriy papka.
+DATA_DIR = os.getenv("DATA_DIR", ".")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+
 def _require(name: str) -> str:
     value = os.getenv(name)
     if not value:

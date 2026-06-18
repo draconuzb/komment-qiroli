@@ -8,6 +8,12 @@ daily_counter.json
 history.json
 sessions/
 *.sid
+data/
+
+# SSH / maxfiy kalitlar
+*.pem
+*.key
+*.ppk
 
 # ===== Python =====
 .venv/

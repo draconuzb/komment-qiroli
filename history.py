@@ -3,7 +3,9 @@ import json
 import os
 from datetime import datetime
 
-_HISTORY_FILE = "history.json"
+import config
+
+_HISTORY_FILE = os.path.join(config.DATA_DIR, "history.json")
 _MAX_ITEMS = 200
 
 
