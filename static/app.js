@@ -5,6 +5,7 @@ const STYLE_META = {
   aqlli:  { label: "🧠 Aqlli burchak",   short: "🧠", badge: "badge--aqlli", cls: "aqlli" },
   bahsli: { label: "🔥 Bahsli",          short: "🔥", badge: "badge--bahsli", cls: "bahsli" },
 };
+const ACTION_ICON = { like: "❤️", repost: "🔁" };
 const RING_C = 2 * Math.PI * 16; // r=16
 
 let state = { mediaId: null, url: "", comments: null, accounts: [] };
@@ -234,6 +235,7 @@ function renderResults(data) {
   $("results").classList.remove("hidden");
   $("desc-text").textContent = data.description;
   $("pick-accounts-card").classList.toggle("hidden", !data.has_media);
+  $("actions-card").classList.toggle("hidden", !data.has_media);
 
   const grid = $("comments-grid");
   grid.innerHTML = "";
@@ -296,6 +298,54 @@ async function doPost(style, text, btn) {
   }
 }
 
+// ---------- Like / Repost ----------
+function reportResults(res, label) {
+  const ok = res.results.filter((r) => r.ok);
+  const fail = res.results.filter((r) => !r.ok);
+  state.accounts = res.accounts;
+  refreshAccountsUI();
+  if (fail.length) {
+    toast(`${label}: ${ok.length} ok, ${fail.length} xato — ${fail.map((f) => "@" + f.username + ": " + f.error).join("; ")}`,
+          ok.length ? "info" : "err");
+  } else {
+    toast(`${label}: ${ok.length} akkauntda bajarildi`, "ok");
+  }
+  loadHistory();
+}
+
+async function doLike(btn) {
+  const usernames = selectedUsernames();
+  if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/like", {
+      method: "POST",
+      body: JSON.stringify({ media_id: state.mediaId, url: state.url, usernames }),
+    });
+    reportResults(res, "Like");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function doRepost(btn) {
+  const usernames = selectedUsernames();
+  if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
+  if (!confirm("Repost: post yuklab olinib, tanlangan akkauntlar profiliga joylanadi.\nBan xavfi yuqori. Davom etamizmi?")) return;
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/repost", {
+      method: "POST",
+      body: JSON.stringify({ url: state.url, caption: $("repost-caption").value, usernames }),
+    });
+    reportResults(res, "Repost");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
 // ---------- History + distribution ----------
 async function loadHistory() {
   try {
@@ -312,7 +362,7 @@ async function loadHistory() {
       row.className = "history-item";
       row.style.animationDelay = `${Math.min(i, 10) * 35}ms`;
       row.innerHTML = `
-        <span class="badge ${meta ? meta.badge : "badge--neutral"}">${meta ? meta.short : it.style}</span>
+        <span class="badge ${meta ? meta.badge : "badge--neutral"}">${meta ? meta.short : (ACTION_ICON[it.style] || it.style)}</span>
         <div class="h-body">
           <div class="h-text"></div>
           <div class="meta">${it.username ? "@" + it.username + " · " : ""}${it.time}</div>
@@ -434,6 +484,8 @@ $("logout-btn").onclick = doLogout;
 $("ig-add-btn").onclick = doAddAccount;
 $("sessionid-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doAddAccount(); });
 $("generate-btn").onclick = doGenerate;
+$("like-btn").onclick = () => doLike($("like-btn"));
+$("repost-btn").onclick = () => doRepost($("repost-btn"));
 $("refresh-history").onclick = loadHistory;
 $("settings-toggle").onclick = openSettings;
 $("settings-close").onclick = closeSettings;

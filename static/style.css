@@ -307,6 +307,16 @@ textarea:focus, .ig-connect input:focus, #provider-select:focus, .field input:fo
 .toast.err  { background: linear-gradient(135deg, #e0413f, #c22f2d); }
 .toast.info { background: linear-gradient(135deg, #3b4252, #2a303d); }
 
+/* ============ Actions (like / repost) ============ */
+.action-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.action-row .btn { flex: 1; min-width: 160px; font-size: 15px; padding: 13px; }
+#like-btn:hover { border-color: #e0413f; color: #e0413f; }
+#repost-btn:hover { border-color: var(--primary); color: var(--primary); }
+.repost-opt { margin-top: 12px; font-size: 14px; }
+.repost-opt summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.repost-opt textarea { margin-top: 8px; }
+.warn { margin-top: 12px; font-size: 12.5px; color: var(--amber); background: rgba(208,135,0,.1); padding: 9px 12px; border-radius: 9px; }
+
 /* ============ Settings modal ============ */
 .overlay.modal { background: rgba(8,10,16,.55); backdrop-filter: blur(5px); animation: fadeInUp .2s ease; }
 .modal-card {

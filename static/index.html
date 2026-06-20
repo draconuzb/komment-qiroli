@@ -129,6 +129,20 @@
           <div id="pick-accounts" class="pick-list"></div>
         </div>
 
+        <div class="card actions-card hidden" id="actions-card">
+          <div class="card-head"><h2>Postga amallar</h2></div>
+          <p class="muted">Tanlangan akkauntlar shu postni like qiladi yoki o'z profiliga repost qiladi.</p>
+          <div class="action-row">
+            <button class="btn btn--ghost" id="like-btn">❤️ Like bosish</button>
+            <button class="btn btn--ghost" id="repost-btn">🔁 Repost qilish</button>
+          </div>
+          <details class="repost-opt">
+            <summary>Repost izohi (ixtiyoriy)</summary>
+            <textarea id="repost-caption" rows="2" placeholder="Bo'sh qoldirsangiz: original izoh + muallif (@username) qo'yiladi"></textarea>
+          </details>
+          <p class="warn">⚠️ Repost postni yuklab, akkaunt profiliga qayta joylaydi — ban xavfi yuqori. Ehtiyot bo'lib, kam ishlating.</p>
+        </div>
+
         <div class="comments-grid" id="comments-grid"></div>
       </section>
 

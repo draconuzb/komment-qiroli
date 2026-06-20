@@ -1,6 +1,7 @@
 anthropic>=0.69.0
 groq>=0.11.0
 mistralai>=1.0.0
+moviepy>=1.0.3
 python-telegram-bot>=21.0
 instagrapi>=2.1.2
 python-dotenv>=1.0.1

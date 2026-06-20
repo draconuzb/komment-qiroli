@@ -261,3 +261,83 @@ def post_comment(media_id: str, text: str, username: str) -> None:
     _with_session(username, lambda cl: cl.media_comment(media_id, text))
     _last_ts[username] = time.time()
     _increment_daily(username)
+
+
+# ---------- Like ----------
+
+def like_media(media_id: str, username: str) -> None:
+    """Bitta akkauntdan postga like bosadi (yengil amal, kichik kechikish bilan)."""
+    time.sleep(random.uniform(2, 6))
+    _with_session(username, lambda cl: cl.media_like(media_id))
+
+
+# ---------- Repost (yuklab olib qayta joylash) ----------
+
+def fetch_repost_source(url: str) -> dict:
+    """Postni bir marta yuklab oladi (barcha akkauntlar uchun qayta ishlatiladi).
+
+    Qaytaradi: {path, kind, caption, original_user}
+    """
+    cl = _any_client()
+    pk = cl.media_pk_from_url(url)
+    info = cl.media_info(pk)
+    folder = os.path.join(config.DATA_DIR, "tmp")
+    os.makedirs(folder, exist_ok=True)
+
+    mt = info.media_type
+    pt = getattr(info, "product_type", "") or ""
+    if mt == 1:
+        path = cl.photo_download(pk, folder)
+        kind = "photo"
+    elif mt == 2 and pt == "clips":
+        path = cl.clip_download(pk, folder)
+        kind = "clip"
+    elif mt == 2:
+        path = cl.video_download(pk, folder)
+        kind = "video"
+    else:
+        raise RuntimeError("Bu post turi (albom/karusel) hozircha repost qilinmaydi.")
+
+    return {
+        "path": str(path),
+        "kind": kind,
+        "caption": (info.caption_text or "").strip(),
+        "original_user": getattr(info.user, "username", ""),
+    }
+
+
+def repost_to_account(src: dict, username: str, caption: str) -> None:
+    """Yuklab olingan media'ni bitta akkauntga joylaydi — rate-limit bilan (og'ir amal)."""
+    min_gap = settings.get("min_seconds_between_comments")
+    daily_limit = settings.get("max_comments_per_day")
+    delay_min = settings.get("random_delay_min")
+    delay_max = settings.get("random_delay_max")
+
+    elapsed = time.time() - _last_ts.get(username, 0.0)
+    if elapsed < min_gap:
+        raise RateLimitError(f"@{username}: juda tez. Yana {int(min_gap - elapsed)}s kuting.")
+    if get_daily_count(username) >= daily_limit:
+        raise RateLimitError(f"@{username}: kunlik limit ({daily_limit}) tugadi.")
+
+    path = src["path"]
+    kind = src["kind"]
+
+    def _upload(cl):
+        if kind == "photo":
+            return cl.photo_upload(path, caption)
+        if kind == "clip":
+            return cl.clip_upload(path, caption)
+        return cl.video_upload(path, caption)
+
+    time.sleep(random.uniform(delay_min, delay_max))
+    _with_session(username, _upload)
+    _last_ts[username] = time.time()
+    _increment_daily(username)
+
+
+def cleanup_repost_source(src: dict) -> None:
+    try:
+        if src and os.path.exists(src.get("path", "")):
+            os.remove(src["path"])
+    except Exception:
+        pass
