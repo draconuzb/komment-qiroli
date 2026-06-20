@@ -28,6 +28,7 @@ import settings
 _SESSIONS_DIR = os.path.join(config.DATA_DIR, "sessions")
 _ACCOUNTS_FILE = os.path.join(config.DATA_DIR, "accounts.json")
 _COUNTER_FILE = os.path.join(config.DATA_DIR, "daily_counter.json")
+_PROXIES_FILE = os.path.join(config.DATA_DIR, "proxies.json")
 
 _clients: dict[str, Client] = {}      # username -> tirik Client (kesh)
 _last_ts: dict[str, float] = {}       # username -> oxirgi komment vaqti
@@ -47,6 +48,71 @@ def _new_client() -> Client:
     cl = Client()
     cl.delay_range = [1, 3]  # instagrapi ichki so'rovlari orasida tasodifiy kechikish
     return cl
+
+
+# ---------- Proxy boshqaruvi (har akkaunt uchun alohida) ----------
+
+def _load_proxies() -> dict:
+    if os.path.exists(_PROXIES_FILE):
+        try:
+            with open(_PROXIES_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_proxies(proxies: dict) -> None:
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    with open(_PROXIES_FILE, "w", encoding="utf-8") as f:
+        json.dump(proxies, f, ensure_ascii=False, indent=2)
+
+
+def get_proxy(username: str) -> str:
+    return _load_proxies().get(username, "")
+
+
+def proxy_display(proxy: str) -> str:
+    """Login/parolsiz ko'rsatish uchun (scheme://host:port)."""
+    if not proxy:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(proxy)
+        if p.hostname:
+            return f"{p.scheme}://{p.hostname}:{p.port}" if p.port else f"{p.scheme}://{p.hostname}"
+    except Exception:
+        pass
+    return proxy
+
+
+def set_proxy(username: str, proxy: str) -> None:
+    """Akkaunt uchun proxy o'rnatadi yoki bo'sh bo'lsa o'chiradi. Keshni tozalaydi."""
+    proxy = (proxy or "").strip()
+    proxies = _load_proxies()
+    if proxy:
+        proxies[username] = proxy
+    else:
+        proxies.pop(username, None)
+    _save_proxies(proxies)
+    _clients.pop(username, None)  # keyingi safar yangi proxy bilan yuklanadi
+
+
+def _apply_proxy(cl: Client, username: str) -> None:
+    proxy = get_proxy(username)
+    if proxy:
+        try:
+            cl.set_proxy(proxy)
+        except Exception:
+            pass
+
+
+def test_proxy(username: str) -> str:
+    """Proxy orqali akkauntni tekshiradi (account_info chaqiradi)."""
+    _clients.pop(username, None)  # joriy proxy bilan yangidan
+    cl = _get_client(username)
+    info = cl.account_info()
+    return info.username
 
 
 def _session_path(username: str) -> str:
@@ -90,13 +156,22 @@ def _save_accounts(usernames: list[str]) -> None:
 
 # ---------- Akkauntlarni boshqarish ----------
 
-def add_account_by_sessionid(sessionid: str) -> str:
-    """Brauzerdan olingan sessionid orqali yangi akkaunt qo'shadi. Username qaytaradi."""
+def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
+    """Brauzerdan olingan sessionid orqali yangi akkaunt qo'shadi. Username qaytaradi.
+
+    proxy berilsa, login ham shu proxy orqali amalga oshiriladi (IP mosligi uchun muhim).
+    """
     sessionid = sessionid.strip().strip('"')
     if not sessionid:
         raise ValueError("sessionid bo'sh")
 
+    proxy = (proxy or "").strip()
     cl = _new_client()
+    if proxy:
+        try:
+            cl.set_proxy(proxy)
+        except Exception as e:
+            raise RuntimeError(f"Proxy noto'g'ri: {e}")
     if not cl.login_by_sessionid(sessionid):
         raise RuntimeError("sessionid bilan kirib bo'lmadi. Cookie eskirgan yoki noto'g'ri.")
 
@@ -110,6 +185,10 @@ def add_account_by_sessionid(sessionid: str) -> str:
     os.makedirs(_SESSIONS_DIR, exist_ok=True)
     cl.dump_settings(_session_path(username))
     _save_sessionid(username, sessionid)  # auto-reconnect uchun saqlaymiz
+    if proxy:
+        proxies = _load_proxies()
+        proxies[username] = proxy
+        _save_proxies(proxies)
 
     accounts = _load_accounts()
     if username not in accounts:
@@ -124,6 +203,9 @@ def remove_account(username: str) -> None:
     _save_accounts([a for a in _load_accounts() if a != username])
     _clients.pop(username, None)
     _last_ts.pop(username, None)
+    proxies = _load_proxies()
+    if proxies.pop(username, None) is not None:
+        _save_proxies(proxies)
     for path in (_session_path(username), _sid_path(username)):
         if os.path.exists(path):
             try:
@@ -136,7 +218,12 @@ def list_accounts() -> list[dict]:
     """Ulangan akkauntlar + bugungi komment soni."""
     limit = settings.get("max_comments_per_day")
     return [
-        {"username": u, "daily_count": get_daily_count(u), "daily_limit": limit}
+        {
+            "username": u,
+            "daily_count": get_daily_count(u),
+            "daily_limit": limit,
+            "proxy": proxy_display(get_proxy(u)),
+        }
         for u in _load_accounts()
     ]
 
@@ -156,6 +243,7 @@ def _get_client(username: str) -> Client:
         cl.load_settings(path)
     except Exception:
         raise NotLoggedInError(f"@{username} sessiya fayli buzilgan. Qaytadan ulang.")
+    _apply_proxy(cl, username)
     _clients[username] = cl
     return cl
 

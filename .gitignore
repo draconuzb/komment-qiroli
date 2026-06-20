@@ -6,6 +6,7 @@ ig_session.json
 ig_user.txt
 daily_counter.json
 history.json
+proxies.json
 sessions/
 *.sid
 data/

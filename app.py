@@ -119,13 +119,14 @@ def get_accounts(session: str | None = Cookie(default=None)):
 
 class AddAccountBody(BaseModel):
     sessionid: str
+    proxy: str = ""
 
 
 @app.post("/api/accounts")
 def add_account(body: AddAccountBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
     try:
-        username = instagram_client.add_account_by_sessionid(body.sessionid)
+        username = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
@@ -136,6 +137,27 @@ def delete_account(username: str, session: str | None = Cookie(default=None)):
     _check_auth(session)
     instagram_client.remove_account(username)
     return {"ok": True, "accounts": instagram_client.list_accounts()}
+
+
+class ProxyBody(BaseModel):
+    proxy: str = ""
+
+
+@app.post("/api/accounts/{username}/proxy")
+def set_account_proxy(username: str, body: ProxyBody, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    instagram_client.set_proxy(username, body.proxy)
+    return {"ok": True, "accounts": instagram_client.list_accounts()}
+
+
+@app.post("/api/accounts/{username}/proxy/test")
+def test_account_proxy(username: str, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    try:
+        name = instagram_client.test_proxy(username)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "username": name}
 
 
 # ---------- Generatsiya ----------

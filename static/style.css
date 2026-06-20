@@ -177,12 +177,18 @@ body {
 /* ============ Accounts ============ */
 .accounts-list { display: flex; flex-direction: column; gap: 9px; margin: 8px 0 14px; }
 .account-row {
-  display: flex; align-items: center; gap: 14px;
+  display: flex; flex-direction: column; gap: 8px;
   padding: 11px 15px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--surface-2); animation: scaleIn .3s ease both;
-  transition: border-color .2s ease, transform .2s ease;
+  transition: border-color .2s ease;
 }
-.account-row:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); transform: translateX(2px); }
+.account-row:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.acc-main { display: flex; align-items: center; gap: 14px; }
+.acc-proxy { display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.proxy-info { font-size: 12.5px; margin-right: auto; }
+.proxy-info.has-proxy { color: var(--green); }
+.proxy-info.no-proxy { color: var(--amber); }
+.proxy-add { margin-top: 10px; }
 .acc-name { font-weight: 600; display: inline-flex; align-items: center; gap: 9px; }
 .acc-name .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
 .acc-meta { margin-left: auto; display: flex; align-items: center; gap: 12px; }

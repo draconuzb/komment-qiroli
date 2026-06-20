@@ -107,23 +107,33 @@ function renderAccounts(accounts) {
   box.innerHTML = "";
   accounts.forEach((a, idx) => {
     const pct = a.daily_limit ? Math.min(1, a.daily_count / a.daily_limit) : 0;
+    const proxyTxt = a.proxy ? `🛡 ${a.proxy}` : "⚠️ proxysiz";
+    const proxyCls = a.proxy ? "has-proxy" : "no-proxy";
     const row = document.createElement("div");
     row.className = "account-row";
     row.style.animationDelay = `${idx * 50}ms`;
     row.innerHTML = `
-      <span class="acc-name"><span class="dot"></span>@${a.username}</span>
-      <div class="acc-meta">
-        <span class="acc-usage">${a.daily_count} / ${a.daily_limit}</span>
-        <svg class="ring" width="40" height="40" viewBox="0 0 40 40">
-          <circle class="ring-bg" cx="20" cy="20" r="16"/>
-          <circle class="ring-fg" cx="20" cy="20" r="16"
-            stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}"/>
-        </svg>
-        <button class="acc-remove" title="O'chirish">×</button>
+      <div class="acc-main">
+        <span class="acc-name"><span class="dot"></span>@${a.username}</span>
+        <div class="acc-meta">
+          <span class="acc-usage">${a.daily_count} / ${a.daily_limit}</span>
+          <svg class="ring" width="40" height="40" viewBox="0 0 40 40">
+            <circle class="ring-bg" cx="20" cy="20" r="16"/>
+            <circle class="ring-fg" cx="20" cy="20" r="16"
+              stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}"/>
+          </svg>
+          <button class="acc-remove" title="O'chirish">×</button>
+        </div>
+      </div>
+      <div class="acc-proxy">
+        <span class="proxy-info ${proxyCls}">${proxyTxt}</span>
+        <button class="btn btn--ghost btn--sm" data-act="setproxy">Proxy</button>
+        <button class="btn btn--ghost btn--sm" data-act="testproxy">Tekshirish</button>
       </div>`;
     row.querySelector(".acc-remove").onclick = () => doRemoveAccount(a.username);
+    row.querySelector('[data-act="setproxy"]').onclick = () => doSetProxy(a.username, a.proxy);
+    row.querySelector('[data-act="testproxy"]').onclick = (e) => doTestProxy(a.username, e.target);
     box.appendChild(row);
-    // animate ring after paint
     const fg = row.querySelector(".ring-fg");
     requestAnimationFrame(() => { fg.style.strokeDashoffset = (RING_C * (1 - pct)).toFixed(1); });
   });
@@ -186,17 +196,47 @@ function refreshAccountsUI() {
 async function doAddAccount() {
   const sid = $("sessionid-input").value.trim();
   if (!sid) { toast("sessionid kiriting", "err"); return; }
+  const proxy = $("proxy-input").value.trim();
   const btn = $("ig-add-btn");
   setLoading(btn, true);
   try {
-    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid }) });
+    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid, proxy }) });
     $("sessionid-input").value = "";
+    $("proxy-input").value = "";
     toast("Akkaunt qo'shildi: @" + res.username, "ok");
     state.accounts = res.accounts;
     refreshAccountsUI();
   } catch (e) {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function doSetProxy(username) {
+  const val = prompt(`@${username} uchun proxy (masalan: http://user:pass@host:port yoki socks5://host:port).\nO'chirish uchun bo'sh qoldiring:`, "");
+  if (val === null) return;
+  try {
+    const res = await api(`/api/accounts/${encodeURIComponent(username)}/proxy`, {
+      method: "POST", body: JSON.stringify({ proxy: val.trim() }),
+    });
+    state.accounts = res.accounts;
+    renderAccounts(state.accounts);
+    renderPickAccounts(state.accounts);
+    toast(val.trim() ? "Proxy o'rnatildi" : "Proxy o'chirildi", "ok");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  }
+}
+
+async function doTestProxy(username, btn) {
+  setLoading(btn, true);
+  try {
+    const res = await api(`/api/accounts/${encodeURIComponent(username)}/proxy/test`, { method: "POST" });
+    toast(`@${username}: ishlayapti ✓ (${res.username})`, "ok");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(`@${username}: ${e.message}`, "err");
   } finally { setLoading(btn, false); }
 }
 

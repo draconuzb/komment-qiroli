@@ -12,6 +12,7 @@ settings.json
 accounts.json
 history.json
 daily_counter.json
+proxies.json
 ig_session.json
 ig_user.txt
 *.sid
