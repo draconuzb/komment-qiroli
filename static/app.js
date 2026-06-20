@@ -5,7 +5,7 @@ const STYLE_META = {
   aqlli:  { label: "🧠 Aqlli burchak",   short: "🧠", badge: "badge--aqlli", cls: "aqlli" },
   bahsli: { label: "🔥 Bahsli",          short: "🔥", badge: "badge--bahsli", cls: "bahsli" },
 };
-const ACTION_ICON = { like: "❤️", repost: "🔁" };
+const ACTION_ICON = { like: "❤️", repost: "🔁", story: "📖" };
 const RING_C = 2 * Math.PI * 16; // r=16
 
 let state = { mediaId: null, url: "", comments: null, accounts: [] };
@@ -329,6 +329,23 @@ async function doLike(btn) {
   } finally { setLoading(btn, false); }
 }
 
+async function doStory(btn) {
+  const usernames = selectedUsernames();
+  if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
+  if (!confirm("Story: post yuklab olinib, tanlangan akkauntlar Story'siga joylanadi (24 soat).\nDavom etamizmi?")) return;
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/story", {
+      method: "POST",
+      body: JSON.stringify({ url: state.url, usernames }),
+    });
+    reportResults(res, "Story");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
 async function doRepost(btn) {
   const usernames = selectedUsernames();
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
@@ -485,6 +502,7 @@ $("ig-add-btn").onclick = doAddAccount;
 $("sessionid-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doAddAccount(); });
 $("generate-btn").onclick = doGenerate;
 $("like-btn").onclick = () => doLike($("like-btn"));
+$("story-btn").onclick = () => doStory($("story-btn"));
 $("repost-btn").onclick = () => doRepost($("repost-btn"));
 $("refresh-history").onclick = loadHistory;
 $("settings-toggle").onclick = openSettings;

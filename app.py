@@ -293,6 +293,38 @@ def repost(body: RepostBody, session: str | None = Cookie(default=None)):
     return {"results": results, "accounts": instagram_client.list_accounts()}
 
 
+# ---------- Story repost ----------
+
+@app.post("/api/story")
+def story(body: RepostBody, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    if not body.url:
+        raise HTTPException(status_code=400, detail="Story uchun post havolasi kerak")
+    if not body.usernames:
+        raise HTTPException(status_code=400, detail="Kamida bitta akkaunt tanlang")
+
+    try:
+        src = instagram_client.fetch_repost_source(body.url)
+    except NotLoggedInError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Postni yuklab bo'lmadi: {e}")
+
+    results = []
+    for username in body.usernames:
+        try:
+            instagram_client.story_to_account(src, username)
+            history.add(body.url, "story", "📖 story", body.url, username)
+            results.append({"username": username, "ok": True})
+        except (RateLimitError, NotLoggedInError) as e:
+            results.append({"username": username, "ok": False, "error": str(e)})
+        except Exception as e:
+            results.append({"username": username, "ok": False, "error": str(e)})
+
+    instagram_client.cleanup_repost_source(src)
+    return {"results": results, "accounts": instagram_client.list_accounts()}
+
+
 @app.get("/api/history")
 def get_history(session: str | None = Cookie(default=None)):
     _check_auth(session)

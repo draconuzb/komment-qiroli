@@ -335,6 +335,33 @@ def repost_to_account(src: dict, username: str, caption: str) -> None:
     _increment_daily(username)
 
 
+def story_to_account(src: dict, username: str) -> None:
+    """Yuklab olingan media'ni bitta akkauntning Story'siga joylaydi (24 soatlik)."""
+    min_gap = settings.get("min_seconds_between_comments")
+    daily_limit = settings.get("max_comments_per_day")
+    delay_min = settings.get("random_delay_min")
+    delay_max = settings.get("random_delay_max")
+
+    elapsed = time.time() - _last_ts.get(username, 0.0)
+    if elapsed < min_gap:
+        raise RateLimitError(f"@{username}: juda tez. Yana {int(min_gap - elapsed)}s kuting.")
+    if get_daily_count(username) >= daily_limit:
+        raise RateLimitError(f"@{username}: kunlik limit ({daily_limit}) tugadi.")
+
+    path = src["path"]
+    is_photo = src["kind"] == "photo"
+
+    def _upload(cl):
+        if is_photo:
+            return cl.photo_upload_to_story(path)
+        return cl.video_upload_to_story(path)  # clip/video — story video sifatida
+
+    time.sleep(random.uniform(delay_min, delay_max))
+    _with_session(username, _upload)
+    _last_ts[username] = time.time()
+    _increment_daily(username)
+
+
 def cleanup_repost_source(src: dict) -> None:
     try:
         if src and os.path.exists(src.get("path", "")):
