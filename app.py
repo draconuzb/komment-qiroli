@@ -272,6 +272,29 @@ def like(body: ActionBody, session: str | None = Cookie(default=None)):
     return {"results": results, "accounts": instagram_client.list_accounts()}
 
 
+# ---------- Ko'rish (view) ----------
+
+@app.post("/api/view")
+def view(body: ActionBody, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    if not body.media_id:
+        raise HTTPException(status_code=400, detail="media_id yo'q")
+    if not body.usernames:
+        raise HTTPException(status_code=400, detail="Kamida bitta akkaunt tanlang")
+
+    results = []
+    for username in body.usernames:
+        try:
+            instagram_client.view_media(body.media_id, username)
+            history.add(body.media_id, "view", "👁 view", body.url, username)
+            results.append({"username": username, "ok": True})
+        except (RateLimitError, NotLoggedInError) as e:
+            results.append({"username": username, "ok": False, "error": str(e)})
+        except Exception as e:
+            results.append({"username": username, "ok": False, "error": str(e)})
+    return {"results": results, "accounts": instagram_client.list_accounts()}
+
+
 # ---------- Repost ----------
 
 class RepostBody(BaseModel):

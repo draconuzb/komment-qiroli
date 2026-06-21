@@ -5,7 +5,7 @@ const STYLE_META = {
   aqlli:  { label: "🧠 Aqlli burchak",   short: "🧠", badge: "badge--aqlli", cls: "aqlli" },
   bahsli: { label: "🔥 Bahsli",          short: "🔥", badge: "badge--bahsli", cls: "bahsli" },
 };
-const ACTION_ICON = { like: "❤️", repost: "🔁", story: "📖" };
+const ACTION_ICON = { like: "❤️", repost: "🔁", story: "📖", view: "👁" };
 const RING_C = 2 * Math.PI * 16; // r=16
 
 let state = { mediaId: null, url: "", comments: null, accounts: [] };
@@ -353,6 +353,22 @@ function reportResults(res, label) {
   loadHistory();
 }
 
+async function doView(btn) {
+  const usernames = selectedUsernames();
+  if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/view", {
+      method: "POST",
+      body: JSON.stringify({ media_id: state.mediaId, url: state.url, usernames }),
+    });
+    reportResults(res, "Ko'rish");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
 async function doLike(btn) {
   const usernames = selectedUsernames();
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
@@ -541,6 +557,7 @@ $("logout-btn").onclick = doLogout;
 $("ig-add-btn").onclick = doAddAccount;
 $("sessionid-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doAddAccount(); });
 $("generate-btn").onclick = doGenerate;
+$("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));
 $("story-btn").onclick = () => doStory($("story-btn"));
 $("repost-btn").onclick = () => doRepost($("repost-btn"));

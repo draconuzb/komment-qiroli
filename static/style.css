@@ -316,6 +316,7 @@ textarea:focus, .ig-connect input:focus, #provider-select:focus, .field input:fo
 /* ============ Actions (like / repost) ============ */
 .action-row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .action-row .btn { flex: 1; min-width: 160px; font-size: 15px; padding: 13px; }
+#view-btn:hover { border-color: var(--blue); color: var(--blue); }
 #like-btn:hover { border-color: #e0413f; color: #e0413f; }
 #story-btn:hover { border-color: #d6457b; color: #d6457b; }
 #repost-btn:hover { border-color: var(--primary); color: var(--primary); }

@@ -359,6 +359,18 @@ def like_media(media_id: str, username: str) -> None:
     _with_session(username, lambda cl: cl.media_like(media_id))
 
 
+# ---------- Ko'rish (view / seen) ----------
+
+def view_media(media_id: str, username: str) -> None:
+    """Media'ni 'ko'rildi' deb belgilaydi.
+
+    Story uchun ishonchli (real view qo'shiladi); reel/video uchun best-effort
+    (ommaviy view soni oshishiga kafolat yo'q).
+    """
+    time.sleep(random.uniform(2, 6))
+    _with_session(username, lambda cl: cl.media_seen([media_id]))
+
+
 # ---------- Repost (yuklab olib qayta joylash) ----------
 
 def fetch_repost_source(url: str) -> dict:
