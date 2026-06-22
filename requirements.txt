@@ -1,10 +1,12 @@
 anthropic>=0.69.0
 groq>=0.11.0
 mistralai>=1.0.0
-moviepy>=1.0.3
 python-telegram-bot>=21.0
 instagrapi>=2.16.24
 python-dotenv>=1.0.1
-pillow>=10.0.0
+pillow>=12.2.0,<13
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
+# moviepy Dockerfile'da --no-deps bilan alohida o'rnatiladi:
+# instagrapi pillow>=12.2 talab qiladi, moviepy esa pillow<12 ga pin qo'yadi,
+# lekin moviepy 2.x amalda pillow 12 bilan ishlaydi — shu sabab --no-deps.
