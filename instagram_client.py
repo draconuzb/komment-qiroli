@@ -373,12 +373,7 @@ def view_media(media_id: str, username: str) -> None:
 
 # ---------- Repost (yuklab olib qayta joylash) ----------
 
-def fetch_repost_source(url: str) -> dict:
-    """Postni bir marta yuklab oladi (barcha akkauntlar uchun qayta ishlatiladi).
-
-    Qaytaradi: {path, kind, caption, original_user}
-    """
-    cl = _any_client()
+def _fetch_repost_with(cl: Client, url: str) -> dict:
     pk = cl.media_pk_from_url(url)
     info = cl.media_info(pk)
     folder = os.path.join(config.DATA_DIR, "tmp")
@@ -404,6 +399,26 @@ def fetch_repost_source(url: str) -> dict:
         "caption": (info.caption_text or "").strip(),
         "original_user": getattr(info.user, "username", ""),
     }
+
+
+def fetch_repost_source(url: str) -> dict:
+    """Postni bir marta yuklab oladi (barcha akkauntlar uchun qayta ishlatiladi).
+
+    Faol akkauntlarni navbatma-navbat sinaydi (fetch_media kabi): LoginRequired
+    bo'lsa auto-reconnect ishlaydi, boshqa xato bo'lsa keyingi akkauntga o'tadi.
+
+    Qaytaradi: {path, kind, caption, original_user}
+    """
+    accounts = _load_accounts()
+    if not accounts:
+        raise NotLoggedInError("Hech qanday Instagram akkaunt ulanmagan. Avval akkaunt qo'shing.")
+    last_err: Exception | None = None
+    for u in accounts:
+        try:
+            return _with_session(u, lambda cl: _fetch_repost_with(cl, url))
+        except Exception as e:
+            last_err = e
+    raise last_err or NotLoggedInError("Faol akkaunt yo'q.")
 
 
 def repost_to_account(src: dict, username: str, caption: str) -> None:
