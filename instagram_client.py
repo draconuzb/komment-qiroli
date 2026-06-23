@@ -6,6 +6,7 @@ aniqlanishi va akkauntlar bloklanishi mumkin. Himoyalar (har akkaunt uchun kunli
 limit, tasodifiy kechikish, alohida sessiya) xavfni kamaytiradi, lekin yo'qotmaydi.
 O'z mas'uliyatingiz ostida ishlating.
 """
+import hashlib
 import json
 import os
 import random
@@ -70,6 +71,28 @@ def _save_proxies(proxies: dict) -> None:
 
 def get_proxy(username: str) -> str:
     return _load_proxies().get(username, "")
+
+
+def _sess_name(s: str) -> str:
+    """IPRoyal session nomi uchun faqat harf/raqam qoldiradi."""
+    return "".join(c for c in s.lower() if c.isalnum())[:24] or "acc"
+
+
+def build_auto_proxy(token: str) -> str:
+    """config'dagi IPRoyal creds asosida UZ sticky proxy URL yasaydi.
+
+    Parametrlar PAROLGA qo'shiladi (IPRoyal formati):
+    http://USER:PASS_country-uz_session-<token>_lifetime-30m@host:port
+    PROXY_AUTO o'chiq yoki creds bo'sh bo'lsa — bo'sh satr qaytaradi.
+    """
+    if not (config.PROXY_AUTO and config.PROXY_HOST and config.PROXY_USER and config.PROXY_PASS):
+        return ""
+    pw = (
+        f"{config.PROXY_PASS}_country-{config.PROXY_COUNTRY}"
+        f"_session-{_sess_name(token)}_lifetime-{config.PROXY_LIFETIME}"
+    )
+    port = f":{config.PROXY_PORT}" if config.PROXY_PORT else ""
+    return f"http://{config.PROXY_USER}:{pw}@{config.PROXY_HOST}{port}"
 
 
 def proxy_display(proxy: str) -> str:
@@ -166,6 +189,11 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
         raise ValueError("sessionid bo'sh")
 
     proxy = (proxy or "").strip()
+    auto = not proxy
+    if auto:
+        # Proxy berilmagan — avtomatik UZ IP (login uchun sessionid'dan barqaror token).
+        proxy = build_auto_proxy(hashlib.md5(sessionid.encode()).hexdigest()[:12])
+
     cl = _new_client()
     if proxy:
         try:
@@ -181,6 +209,16 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
         username = getattr(cl, "username", "") or ""
     if not username:
         raise RuntimeError("Akkaunt nomini aniqlab bo'lmadi.")
+
+    # Avto rejimda — username bo'yicha barqaror UZ sticky-IP (har safar ~o'sha IP).
+    if auto:
+        stable = build_auto_proxy(username)
+        if stable:
+            proxy = stable
+            try:
+                cl.set_proxy(proxy)
+            except Exception:
+                pass
 
     os.makedirs(_SESSIONS_DIR, exist_ok=True)
     cl.dump_settings(_session_path(username))

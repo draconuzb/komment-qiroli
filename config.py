@@ -53,3 +53,13 @@ MAX_COMMENTS_PER_DAY = int(os.getenv("MAX_COMMENTS_PER_DAY", "30"))
 # Web-panel
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.
 PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "")
+
+# Avtomatik proxy (IPRoyal residential) — yangi akkaunt qo'shilganda har biriga
+# avtomatik alohida UZ sticky-IP biriktiriladi (proxy maydonini bo'sh qoldirsa).
+PROXY_AUTO = os.getenv("PROXY_AUTO", "") == "1"
+PROXY_HOST = os.getenv("PROXY_HOST", "")
+PROXY_PORT = os.getenv("PROXY_PORT", "")
+PROXY_USER = os.getenv("PROXY_USER", "")
+PROXY_PASS = os.getenv("PROXY_PASS", "")
+PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "uz")
+PROXY_LIFETIME = os.getenv("PROXY_LIFETIME", "30m")
