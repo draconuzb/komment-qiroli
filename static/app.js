@@ -8,6 +8,26 @@ const STYLE_META = {
 const ACTION_ICON = { like: "❤️", repost: "🔁", story: "📖", view: "👁" };
 const RING_C = 2 * Math.PI * 16; // r=16
 
+// === Repost / Story vaqtincha O'CHIRILGAN (GB tejash uchun) ===
+// Proxy GB (internet trafigi) cheklangan. Repost va Story video yuklab oladi va
+// qayta joylaydi — har biri ~20-30 MB, ya'ni GB ni juda tez tugatadi.
+// Komment/like esa juda kam trafik. Proxy + yetarli GB tayyor bo'lgach,
+// pastdagi flag'ni `true` qilib qayta yoqamiz.
+const REPOST_STORY_ENABLED = false;
+const REPOST_STORY_MSG =
+  "🚫 Repost va Story hozircha vaqtincha O'CHIRILGAN\n\n" +
+  "SABABI:\n" +
+  "• Repost/Story postdagi VIDEO ni yuklab olib, qayta joylaydi.\n" +
+  "• Har bir repost/story ~20-30 MB proxy interneti (GB) sarflaydi.\n" +
+  "• Bizda proxy GB cheklangan (hozir atigi bir necha GB) — bularni\n" +
+  "  ishlatsak, internet bir necha kunda tugab qoladi.\n\n" +
+  "HOZIR NIMA QILSA BO'LADI:\n" +
+  "• ✅ Komment yozish va ❤️ Like — bular juda kam trafik (~1 MB),\n" +
+  "  bemalol ishlatavering.\n" +
+  "• 🧠 AI komment generatsiyasi umuman proxy GB ishlatmaydi.\n\n" +
+  "QACHON YOQILADI:\n" +
+  "• Yetarli proxy GB ulanib, balans to'lgach Repost/Story qayta ochiladi.";
+
 let state = { mediaId: null, url: "", comments: null, accounts: [] };
 
 const $ = (id) => document.getElementById(id);
@@ -386,6 +406,7 @@ async function doLike(btn) {
 }
 
 async function doStory(btn) {
+  if (!REPOST_STORY_ENABLED) { alert(REPOST_STORY_MSG); return; }
   const usernames = selectedUsernames();
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
   if (!confirm("Story: post yuklab olinib, tanlangan akkauntlar Story'siga joylanadi (24 soat).\nDavom etamizmi?")) return;
@@ -403,6 +424,7 @@ async function doStory(btn) {
 }
 
 async function doRepost(btn) {
+  if (!REPOST_STORY_ENABLED) { alert(REPOST_STORY_MSG); return; }
   const usernames = selectedUsernames();
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
   if (!confirm("Repost: post yuklab olinib, tanlangan akkauntlar profiliga joylanadi.\nBan xavfi yuqori. Davom etamizmi?")) return;
@@ -561,6 +583,17 @@ $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));
 $("story-btn").onclick = () => doStory($("story-btn"));
 $("repost-btn").onclick = () => doRepost($("repost-btn"));
+
+// Repost/Story o'chirilgan bo'lsa — vizual "off" ko'rinish (bosilsa xabar chiqadi).
+if (!REPOST_STORY_ENABLED) {
+  for (const id of ["story-btn", "repost-btn"]) {
+    const b = $(id);
+    if (!b) continue;
+    b.classList.add("btn--off");
+    b.title = "Vaqtincha o'chirilgan — GB tejash uchun (bosing: batafsil)";
+    b.textContent = b.textContent.trim() + " 🔒";
+  }
+}
 $("refresh-history").onclick = loadHistory;
 $("settings-toggle").onclick = openSettings;
 $("settings-close").onclick = closeSettings;

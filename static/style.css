@@ -325,6 +325,10 @@ textarea:focus, .ig-connect input:focus, #provider-select:focus, .field input:fo
 .repost-opt textarea { margin-top: 8px; }
 .warn { margin-top: 12px; font-size: 12.5px; color: var(--amber); background: rgba(208,135,0,.1); padding: 9px 12px; border-radius: 9px; }
 
+/* Vaqtincha o'chirilgan tugma (bosilsa sababini tushuntiradi) */
+.btn--off { opacity: .5; filter: grayscale(1); cursor: not-allowed; }
+.btn--off:hover { border-color: var(--muted) !important; color: var(--muted) !important; }
+
 /* ============ Settings modal ============ */
 .overlay.modal { background: rgba(8,10,16,.55); backdrop-filter: blur(5px); animation: fadeInUp .2s ease; }
 .modal-card {

@@ -23,6 +23,16 @@ from instagram_client import RateLimitError, NotLoggedInError
 
 app = FastAPI(title="Komment Qiroli")
 
+# Repost/Story vaqtincha o'chirilgan (proxy GB tejash uchun). Video yuklash ~20-30 MB,
+# komment/like esa ~1 MB. Yetarli proxy GB ulangach True qiling.
+REPOST_STORY_ENABLED = False
+_REPOST_STORY_OFF_MSG = (
+    "Repost va Story vaqtincha o'chirilgan (proxy interneti/GB tejash uchun). "
+    "Ular video yuklab oladi va har biri ~20-30 MB GB sarflaydi. Hozircha "
+    "komment va like ishlating (ular juda kam trafik). Yetarli proxy GB "
+    "ulangach qayta yoqiladi."
+)
+
 _STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
@@ -306,6 +316,8 @@ class RepostBody(BaseModel):
 @app.post("/api/repost")
 def repost(body: RepostBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
+    if not REPOST_STORY_ENABLED:
+        raise HTTPException(status_code=403, detail=_REPOST_STORY_OFF_MSG)
     if not body.url:
         raise HTTPException(status_code=400, detail="Repost uchun post havolasi kerak")
     if not body.usernames:
@@ -343,6 +355,8 @@ def repost(body: RepostBody, session: str | None = Cookie(default=None)):
 @app.post("/api/story")
 def story(body: RepostBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
+    if not REPOST_STORY_ENABLED:
+        raise HTTPException(status_code=403, detail=_REPOST_STORY_OFF_MSG)
     if not body.url:
         raise HTTPException(status_code=400, detail="Story uchun post havolasi kerak")
     if not body.usernames:
