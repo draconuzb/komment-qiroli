@@ -127,35 +127,23 @@ function renderAccounts(accounts) {
   box.innerHTML = "";
   accounts.forEach((a, idx) => {
     const pct = a.daily_limit ? Math.min(1, a.daily_count / a.daily_limit) : 0;
-    const proxyTxt = a.proxy ? `🛡 ${a.proxy}` : "⚠️ proxysiz";
-    const proxyCls = a.proxy ? "has-proxy" : "no-proxy";
+    const hasProxy = !!a.proxy;
     const row = document.createElement("div");
     row.className = "account-row";
-    row.style.animationDelay = `${idx * 50}ms`;
+    row.style.animationDelay = `${Math.min(idx, 20) * 25}ms`;
     row.innerHTML = `
-      <div class="acc-main">
-        <span class="acc-name"><span class="dot"></span>@${a.username}</span>
-        <div class="acc-meta">
-          <span class="acc-usage">${a.daily_count} / ${a.daily_limit}</span>
-          <svg class="ring" width="40" height="40" viewBox="0 0 40 40">
-            <circle class="ring-bg" cx="20" cy="20" r="16"/>
-            <circle class="ring-fg" cx="20" cy="20" r="16"
-              stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}"/>
-          </svg>
-          <button class="acc-remove" title="O'chirish">×</button>
-        </div>
-      </div>
-      <div class="acc-proxy">
-        <span class="proxy-info ${proxyCls}">${proxyTxt}</span>
-        <button class="btn btn--ghost btn--sm" data-act="setproxy">Proxy</button>
-        <button class="btn btn--ghost btn--sm" data-act="testproxy">Tekshirish</button>
-      </div>`;
-    row.querySelector(".acc-remove").onclick = () => doRemoveAccount(a.username);
+      <span class="acc-name" title="@${a.username}"><span class="dot"></span>@${a.username}</span>
+      <span class="acc-usage" title="Bugun: ${a.daily_count}/${a.daily_limit}">
+        <i class="usage-bar"><b style="width:${(pct * 100).toFixed(0)}%"></b></i>${a.daily_count}/${a.daily_limit}
+      </span>
+      <button class="proxy-chip ${hasProxy ? "has-proxy" : "no-proxy"}" data-act="setproxy"
+        title="${hasProxy ? a.proxy : "Proxysiz — o'rnatish uchun bosing"}">${hasProxy ? "🛡" : "⚠️"}</button>
+      <button class="acc-icon" data-act="testproxy" title="Proxyni tekshirish">↻</button>
+      <button class="acc-icon acc-remove" title="O'chirish">×</button>`;
     row.querySelector('[data-act="setproxy"]').onclick = () => doSetProxy(a.username, a.proxy);
-    row.querySelector('[data-act="testproxy"]').onclick = (e) => doTestProxy(a.username, e.target);
+    row.querySelector('[data-act="testproxy"]').onclick = (e) => doTestProxy(a.username, e.currentTarget);
+    row.querySelector(".acc-remove").onclick = () => doRemoveAccount(a.username);
     box.appendChild(row);
-    const fg = row.querySelector(".ring-fg");
-    requestAnimationFrame(() => { fg.style.strokeDashoffset = (RING_C * (1 - pct)).toFixed(1); });
   });
 }
 

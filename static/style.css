@@ -175,35 +175,52 @@ body {
 }
 
 /* ============ Accounts ============ */
-.accounts-list { display: flex; flex-direction: column; gap: 9px; margin: 8px 0 14px; }
+/* Ixcham akkaunt ro'yxati — bir qatorli, ko'p akkaunt uchun skroll */
+.accounts-list {
+  display: flex; flex-direction: column; gap: 5px; margin: 8px 0 12px;
+  max-height: 340px; overflow-y: auto; padding-right: 2px;
+}
+.accounts-list::-webkit-scrollbar { width: 7px; }
+.accounts-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .account-row {
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 11px 15px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface-2); animation: scaleIn .3s ease both;
-  transition: border-color .2s ease;
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); animation: scaleIn .22s ease both;
+  transition: border-color .15s ease, background .15s ease;
 }
-.account-row:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
-.acc-main { display: flex; align-items: center; gap: 14px; }
-.acc-proxy { display: flex; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--border); }
-.proxy-info { font-size: 12.5px; margin-right: auto; }
-.proxy-info.has-proxy { color: var(--green); }
-.proxy-info.no-proxy { color: var(--amber); }
-.proxy-add { margin-top: 10px; }
-.acc-name { font-weight: 600; display: inline-flex; align-items: center; gap: 9px; }
-.acc-name .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
-.acc-meta { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-.acc-usage { font-size: 12.5px; color: var(--muted); }
-.acc-remove {
-  border: none; background: transparent; color: var(--muted); cursor: pointer;
-  width: 28px; height: 28px; border-radius: 8px; font-size: 19px; line-height: 1; transition: all .15s;
+.account-row:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface-2));
 }
+.acc-name {
+  font-weight: 600; font-size: 13.5px; flex: 1; min-width: 0;
+  display: inline-flex; align-items: center; gap: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acc-name .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 0 3px rgba(22,163,74,.18); flex: none;
+}
+.acc-usage {
+  font-size: 11px; color: var(--muted); white-space: nowrap; flex: none;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.usage-bar { width: 32px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; display: inline-block; }
+.usage-bar b { display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, #7c5cff, #d6457b);
+  transition: width 1s cubic-bezier(.22,.7,.3,1); }
+.proxy-chip, .acc-icon {
+  flex: none; border: none; background: transparent; cursor: pointer;
+  width: 26px; height: 26px; border-radius: 7px; font-size: 13.5px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); transition: all .15s;
+}
+.proxy-chip.has-proxy { color: var(--green); }
+.proxy-chip.no-proxy { color: var(--amber); }
+.acc-icon:hover, .proxy-chip:hover { background: var(--surface); transform: translateY(-1px); }
+.acc-remove { font-size: 18px; }
 .acc-remove:hover { background: rgba(224,65,63,.12); color: var(--red); }
-
-/* progress ring */
-.ring { transform: rotate(-90deg); }
-.ring-bg { fill: none; stroke: var(--border); stroke-width: 4; }
-.ring-fg { fill: none; stroke: url(#ringgrad); stroke-width: 4; stroke-linecap: round;
-  transition: stroke-dashoffset 1s cubic-bezier(.22,.7,.3,1); }
+.proxy-add { margin-top: 10px; }
 
 /* ============ Forms / inputs ============ */
 textarea, .ig-connect input, #provider-select, .field input {
