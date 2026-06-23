@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import random
+import secrets
 import time
 from datetime import date
 
@@ -22,6 +23,12 @@ except Exception:  # eski/yangi versiyalar uchun zaxira
     class LoginRequired(Exception):
         pass
     _LOGIN_ERRORS = (LoginRequired,)
+
+try:
+    from instagrapi.exceptions import TwoFactorRequired
+except Exception:  # versiya farqlari uchun zaxira
+    class TwoFactorRequired(Exception):
+        pass
 
 import config
 import settings
@@ -240,6 +247,108 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
 
     _clients[username] = cl
     return username
+
+
+# ---------- Plan B: login + parol bilan kirish (2FA bilan) ----------
+#
+# MUHIM: login HAM, undan keyingi hamma amal HAM faqat o'sha akkauntning UZ
+# proxysi orqali o'tadi — hech qachon serverning (AWS) IP'sidan emas. Shu sabab
+# proxy login boshlanishidan oldin o'rnatiladi va sessiyaga saqlanadi.
+#
+# 2FA kodi kiritilguncha o'sha tirik Client xotirada saqlanadi (token bilan).
+_pending_logins: dict[str, dict] = {}  # token -> {cl, username, password, proxy}
+
+
+def _finalize_login(cl: Client, username_hint: str, proxy: str) -> str:
+    """Muvaffaqiyatli logindan keyin sessiyani saqlaydi va akkauntni ro'yxatga qo'shadi."""
+    try:
+        username = cl.account_info().username
+    except Exception:
+        username = getattr(cl, "username", "") or username_hint
+    if not username:
+        raise RuntimeError("Akkaunt nomini aniqlab bo'lmadi.")
+
+    # sessionid'ni ham saqlaymiz — keyinchalik auto-reconnect (_with_session) uchun.
+    try:
+        sid = cl.sessionid
+    except Exception:
+        sid = ""
+
+    os.makedirs(_SESSIONS_DIR, exist_ok=True)
+    cl.dump_settings(_session_path(username))
+    if sid:
+        _save_sessionid(username, sid)
+    if proxy:
+        proxies = _load_proxies()
+        proxies[username] = proxy
+        _save_proxies(proxies)
+
+    accounts = _load_accounts()
+    if username not in accounts:
+        accounts.append(username)
+        _save_accounts(accounts)
+
+    _clients[username] = cl
+    return username
+
+
+def start_login(username: str, password: str, proxy: str = "") -> dict:
+    """Login+parol bilan kirishni boshlaydi. Hammasi akkaunt proxysi orqali o'tadi.
+
+    Qaytaradi:
+      {"status": "ok", "username": ...}   — muvaffaqiyatli kirdi (2FA o'chiq)
+      {"status": "2fa", "token": ...}     — 2FA kodi kerak (finish_login_2fa chaqiring)
+    """
+    username = (username or "").strip().lstrip("@")
+    password = password or ""
+    if not username or not password:
+        raise ValueError("Username va parol kerak")
+
+    proxy = (proxy or "").strip()
+    if not proxy:
+        # Proxy berilmagan — akkauntga avtomatik barqaror UZ sticky-IP.
+        proxy = build_auto_proxy(username)
+
+    cl = _new_client()
+    if proxy:
+        try:
+            cl.set_proxy(proxy)
+        except Exception as e:
+            raise RuntimeError(f"Proxy noto'g'ri: {e}")
+
+    try:
+        cl.login(username, password)
+    except TwoFactorRequired:
+        token = secrets.token_urlsafe(16)
+        _pending_logins[token] = {
+            "cl": cl, "username": username, "password": password, "proxy": proxy,
+        }
+        return {"status": "2fa", "token": token}
+    except Exception as e:
+        raise RuntimeError(f"Kirib bo'lmadi: {e}")
+
+    name = _finalize_login(cl, username, proxy)
+    return {"status": "ok", "username": name}
+
+
+def finish_login_2fa(token: str, code: str) -> str:
+    """2FA (6 xonali) kodi bilan loginni yakunlaydi. Username qaytaradi."""
+    pend = _pending_logins.get(token)
+    if not pend:
+        raise RuntimeError("Login sessiyasi topilmadi yoki eskirgan. Qaytadan urinib ko'ring.")
+    code = (code or "").strip().replace(" ", "")
+    if not code:
+        raise ValueError("2FA kodi kerak")
+
+    cl = pend["cl"]
+    try:
+        cl.login(pend["username"], pend["password"], verification_code=code)
+    except Exception as e:
+        raise RuntimeError(f"2FA kodi qabul qilinmadi: {e}")
+
+    name = _finalize_login(cl, pend["username"], pend["proxy"])
+    _pending_logins.pop(token, None)
+    return name
 
 
 def remove_account(username: str) -> None:

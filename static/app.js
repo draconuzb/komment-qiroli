@@ -232,6 +232,63 @@ async function doAddAccount() {
   } finally { setLoading(btn, false); }
 }
 
+// Plan B: login + parol bilan kirish (2FA bilan)
+let _pendingLoginToken = null;
+
+async function doLoginAccount() {
+  const username = $("iglogin-username").value.trim();
+  const password = $("iglogin-password").value;
+  if (!username || !password) { toast("Username va parol kiriting", "err"); return; }
+  const proxy = $("iglogin-proxy").value.trim();
+  const btn = $("ig-login-btn");
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/accounts/login", {
+      method: "POST", body: JSON.stringify({ username, password, proxy }),
+    });
+    if (res.status === "2fa") {
+      _pendingLoginToken = res.token;
+      $("twofa-row").style.display = "";
+      $("iglogin-2fa").focus();
+      toast("2FA kodi yuborildi — kodni kiriting", "info");
+      return;
+    }
+    _finishAccountAdded(res, "@" + res.username + " kirdi");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function doVerify2FA() {
+  const code = $("iglogin-2fa").value.trim();
+  if (!code) { toast("2FA kodini kiriting", "err"); return; }
+  if (!_pendingLoginToken) { toast("Avval login qiling", "err"); return; }
+  const btn = $("ig-2fa-btn");
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/accounts/login/2fa", {
+      method: "POST", body: JSON.stringify({ token: _pendingLoginToken, code }),
+    });
+    _pendingLoginToken = null;
+    $("twofa-row").style.display = "none";
+    $("iglogin-2fa").value = "";
+    _finishAccountAdded(res, "@" + res.username + " kirdi (2FA)");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+function _finishAccountAdded(res, msg) {
+  $("iglogin-username").value = "";
+  $("iglogin-password").value = "";
+  $("iglogin-proxy").value = "";
+  toast(msg, "ok");
+  state.accounts = res.accounts;
+  refreshAccountsUI();
+}
+
 async function doSetProxy(username) {
   const val = prompt(`@${username} uchun proxy (masalan: http://user:pass@host:port yoki socks5://host:port).\nO'chirish uchun bo'sh qoldiring:`, "");
   if (val === null) return;
@@ -578,6 +635,10 @@ $("login-password").addEventListener("keydown", (e) => { if (e.key === "Enter") 
 $("logout-btn").onclick = doLogout;
 $("ig-add-btn").onclick = doAddAccount;
 $("sessionid-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doAddAccount(); });
+$("ig-login-btn").onclick = doLoginAccount;
+$("ig-2fa-btn").onclick = doVerify2FA;
+$("iglogin-password").addEventListener("keydown", (e) => { if (e.key === "Enter") doLoginAccount(); });
+$("iglogin-2fa").addEventListener("keydown", (e) => { if (e.key === "Enter") doVerify2FA(); });
 $("generate-btn").onclick = doGenerate;
 $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));

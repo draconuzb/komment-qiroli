@@ -144,6 +144,43 @@ def add_account(body: AddAccountBody, session: str | None = Cookie(default=None)
     return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
 
 
+class LoginAccountBody(BaseModel):
+    username: str
+    password: str
+    proxy: str = ""
+
+
+@app.post("/api/accounts/login")
+def account_login(body: LoginAccountBody, session: str | None = Cookie(default=None)):
+    """Plan B: login+parol bilan akkaunt qo'shish. Login akkaunt proxysi orqali o'tadi.
+
+    Javob: {ok, status: "ok"|"2fa", username?|token?, accounts}
+    2FA yoqiq bo'lsa status="2fa" + token qaytadi — /api/accounts/login/2fa ga yuboring.
+    """
+    _check_auth(session)
+    try:
+        res = instagram_client.start_login(body.username, body.password, body.proxy)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, **res, "accounts": instagram_client.list_accounts()}
+
+
+class Login2FABody(BaseModel):
+    token: str
+    code: str
+
+
+@app.post("/api/accounts/login/2fa")
+def account_login_2fa(body: Login2FABody, session: str | None = Cookie(default=None)):
+    """2FA kodi bilan loginni yakunlaydi."""
+    _check_auth(session)
+    try:
+        username = instagram_client.finish_login_2fa(body.token, body.code)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
+
+
 @app.delete("/api/accounts/{username}")
 def delete_account(username: str, session: str | None = Cookie(default=None)):
     _check_auth(session)

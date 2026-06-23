@@ -96,6 +96,21 @@
           <input type="text" id="proxy-input" class="proxy-add" placeholder="Proxy (ixtiyoriy, lekin tavsiya etiladi): http://user:pass@host:port" autocomplete="off" />
           <p class="muted">Har bir akkaunt uchun boshqa brauzer profilidan sessionid oling. Tavsiya: har akkauntga alohida proxy — ban xavfini keskin kamaytiradi. Maxfiy ma'lumotlar faqat shu serverda saqlanadi.</p>
         </details>
+
+        <details class="howto">
+          <summary>+ Akkaunt qo'shish (login va parol orqali)</summary>
+          <p class="muted">Login HAM, hamma amal HAM faqat akkaunt proxysi (UZ IP) orqali o'tadi — serverning IP'sidan emas. 2FA yoqiq bo'lsa, kod so'raladi.</p>
+          <div class="ig-connect">
+            <input type="text" id="iglogin-username" placeholder="Username (@siz)" autocomplete="off" />
+            <input type="password" id="iglogin-password" placeholder="Parol" autocomplete="off" />
+            <button class="btn btn--primary" id="ig-login-btn"><span class="btn-label">Kirish</span></button>
+          </div>
+          <input type="text" id="iglogin-proxy" class="proxy-add" placeholder="Proxy (ixtiyoriy — bo'sh qolsa avtomatik UZ IP): http://user:pass@host:port" autocomplete="off" />
+          <div class="ig-connect" id="twofa-row" style="display:none; margin-top:10px;">
+            <input type="text" id="iglogin-2fa" placeholder="2FA kodi (6 xona)" inputmode="numeric" autocomplete="off" maxlength="8" />
+            <button class="btn btn--primary" id="ig-2fa-btn"><span class="btn-label">Tasdiqlash</span></button>
+          </div>
+        </details>
       </section>
 
       <!-- Generatsiya -->
