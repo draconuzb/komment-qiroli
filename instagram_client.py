@@ -47,7 +47,12 @@ class NotLoggedInError(Exception):
 
 def _new_client() -> Client:
     cl = Client()
-    cl.delay_range = [1, 3]  # instagrapi ichki so'rovlari orasida tasodifiy kechikish
+    cl.delay_range = [1, 2]  # instagrapi ichki so'rovlari orasida tasodifiy kechikish
+    # Har bir HTTP so'rovga timeout — o'lik sessiya/sekin proxy 504 ga olib kelmasin.
+    try:
+        cl.request_timeout = 12
+    except Exception:
+        pass
     return cl
 
 
