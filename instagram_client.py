@@ -307,14 +307,15 @@ def _with_session(username: str, fn):
 
 # ---------- Media (video yoki rasm) ----------
 
-def _fetch_with(cl: Client, url: str) -> tuple[str, str]:
+def _fetch_with(cl: Client, url: str) -> tuple[str, str, str]:
     pk = cl.media_pk_from_url(url)
     media = cl.media_info(pk)
-    return cl.media_id(pk), (media.caption_text or "").strip()
+    thumb = str(getattr(media, "thumbnail_url", "") or "")
+    return cl.media_id(pk), (media.caption_text or "").strip(), thumb
 
 
-def fetch_media(url: str) -> tuple[str, str]:
-    """URL (video yoki rasm post) -> (media_id, caption_matni).
+def fetch_media(url: str) -> tuple[str, str, str]:
+    """URL (video yoki rasm post) -> (media_id, caption_matni, muqova_rasm_url).
 
     Faol akkauntlarni navbatma-navbat sinaydi; LoginRequired bo'lsa auto-reconnect
     ishlaydi, boshqa xato bo'lsa keyingi akkauntga o'tadi."""

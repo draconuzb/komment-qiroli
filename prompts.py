@@ -25,6 +25,17 @@ def build_user_prompt(video_description: str) -> str:
 Video mavzusi/matni: {video_description}"""
 
 
+def build_user_prompt_vision() -> str:
+    """Caption yo'q bo'lganda — post muqova RASMI asosida izoh yaratish uchun."""
+    return """Quyidagi Instagram post/video MUQOVA RASMI (kadri) asosida menga 3 xil uslubda izoh variantlarini yaratib ber:
+
+1. Yumor/Sarkazm uslubida
+2. Kutilmagan burchakdan (Aql bilan yozilgan)
+3. Odamlarni qizg'in bahsga tortadigan (Biroz provokatsion)
+
+Bu postda matn (caption) yo'q — faqat rasmga qarab, undagi voqea/predmet/holatni tushunib, shunga mos jonli o'zbekcha izoh yoz."""
+
+
 # Groq/Mistral uchun (structured output yo'q) — JSON formatini prompt orqali majburlaymiz.
 JSON_INSTRUCTION = (
     "\n\nJavobni FAQAT quyidagi JSON formatida qaytar, boshqa hech qanday matn yozma:\n"

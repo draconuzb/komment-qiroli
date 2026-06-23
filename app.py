@@ -7,8 +7,10 @@ yoki:
 """
 import re
 import secrets
+import time
 from pathlib import Path
 
+import requests
 from fastapi import Cookie, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -177,6 +179,34 @@ class GenerateBody(BaseModel):
     provider: str = "claude"
 
 
+# Bir reel takror generate qilinsa, qayta Instagram'ga bormaslik uchun kesh (proxy GB tejash).
+# url -> (media_id, caption, thumb_url, vaqt). TTL ichida qayta so'rov yubormaydi.
+_MEDIA_CACHE: dict[str, tuple] = {}
+_MEDIA_CACHE_TTL = 600  # 10 daqiqa
+
+
+def _fetch_media_cached(url: str):
+    hit = _MEDIA_CACHE.get(url)
+    if hit and (time.time() - hit[3]) < _MEDIA_CACHE_TTL:
+        return hit[0], hit[1], hit[2]
+    media_id, caption, thumb = instagram_client.fetch_media(url)
+    _MEDIA_CACHE[url] = (media_id, caption, thumb, time.time())
+    return media_id, caption, thumb
+
+
+def _download_image(url: str, max_bytes: int = 3_000_000) -> bytes:
+    """Muqova rasmni TO'G'RIDAN-TO'G'RI (proxy'siz) yuklab oladi — CDN ochiq, 0 proxy GB.
+
+    Hajmi cheklangan (himoyalar uchun)."""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    r = requests.get(url, headers=headers, timeout=20, stream=True)
+    r.raise_for_status()
+    data = r.content[:max_bytes]
+    if not data:
+        raise RuntimeError("Rasm bo'sh yuklandi")
+    return data
+
+
 @app.post("/api/generate")
 def generate(body: GenerateBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
@@ -193,16 +223,37 @@ def generate(body: GenerateBody, session: str | None = Cookie(default=None)):
     if url_match:
         url = url_match.group(0)
         try:
-            media_id, caption = instagram_client.fetch_media(url)
+            media_id, caption, thumb_url = _fetch_media_cached(url)
         except NotLoggedInError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
+
+        # Caption yo'q bo'lsa — muqova RASMI asosida (Claude vision) generatsiya.
         if not caption:
-            raise HTTPException(
-                status_code=422,
-                detail="Bu postda matn (caption) yo'q. Mavzuni alohida matn qilib kiriting.",
-            )
+            if not thumb_url:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Bu postda matn ham, rasm ham topilmadi. Mavzuni alohida matn qilib kiriting.",
+                )
+            try:
+                img = _download_image(thumb_url)
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Muqova rasmini yuklab bo'lmadi: {e}")
+            try:
+                comments = ai_client.generate_comments_from_image(img)
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Rasm asosida komment yaratib bo'lmadi: {e}")
+            return {
+                "has_media": True,
+                "media_id": media_id,
+                "url": url,
+                "description": "(caption yo'q — muqova rasmi tahlil qilindi)",
+                "source": "vision",
+                "provider": "claude",
+                "comments": comments,
+            }
+
         description = caption
 
     try:
@@ -215,6 +266,7 @@ def generate(body: GenerateBody, session: str | None = Cookie(default=None)):
         "media_id": media_id,
         "url": url,
         "description": description,
+        "source": "text",
         "provider": body.provider,
         "comments": comments,
     }

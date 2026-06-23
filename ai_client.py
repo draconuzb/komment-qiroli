@@ -82,6 +82,16 @@ def generate_comments(description: str, provider: str = "claude") -> dict:
     raise ValueError(f"Noma'lum provayder: {provider}")
 
 
+def generate_comments_from_image(image_bytes: bytes, media_type: str = "image/jpeg") -> dict:
+    """Caption yo'q bo'lganda — post rasmi asosida izoh (faqat Claude vision)."""
+    if not settings.get("anthropic_api_key"):
+        raise RuntimeError(
+            "Bu postda matn (caption) yo'q. Rasm asosida izoh yaratish uchun "
+            "Anthropic (Claude) API kaliti kerak — Sozlamalardan kiriting."
+        )
+    return _normalize(claude_client.generate_comments_from_image(image_bytes, media_type))
+
+
 def test_provider(provider: str, api_key: str = "", model: str = "") -> str:
     """Provayder kalitini tekshiradi. api_key bo'sh bo'lsa — saqlangani ishlatiladi.
 
