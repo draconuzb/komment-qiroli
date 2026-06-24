@@ -23,4 +23,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Web-panel + (token bo'lsa) Telegram bot birga ishga tushadi.
+CMD ["sh", "start.sh"]

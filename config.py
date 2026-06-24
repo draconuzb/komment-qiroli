@@ -27,6 +27,9 @@ ALLOWED_TELEGRAM_IDS = {
     for x in os.getenv("ALLOWED_TELEGRAM_IDS", "").split(",")
     if x.strip()
 }
+# Avtomatlashtirish kanali (bot admin bo'lishi shart). @username yoki -100... ID.
+# Bo'sh bo'lsa — bot admin bo'lgan har qanday kanaldagi havolaga ishlaydi.
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "")
 
 # AI provayderlar (kamida bittasi to'ldirilgan bo'lsin)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

@@ -1,12 +1,21 @@
-"""Telegram bot: video URL -> Claude 3 variant -> tugma bilan tanlash -> Instagram'ga joylash."""
+"""Telegram avtomatlashtirish:
+
+- Kanalga (bot admin bo'lgan) yoki ruxsatli DM'ga Instagram havolasi tashlansa,
+  bot HAR AKKAUNT uchun o'sha akkaunt XUSUSIYATIga + post matniga mos ALOHIDA
+  komment yaratadi, joylaydi va (iloji bo'lsa) like bosadi.
+- Holat (qaysi akkaunt joyladi / xato) o'sha kanalga/chatga yozib turiladi.
+
+Bot admin bo'lishi shart (kanal postlarini o'qishi uchun). TELEGRAM_CHANNEL_ID
+berilsa — faqat o'sha kanal; bo'sh bo'lsa — bot admin bo'lgan har qanday kanal.
+"""
 import asyncio
 import logging
 import re
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+import requests
+from telegram import Update
 from telegram.ext import (
     Application,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -14,9 +23,9 @@ from telegram.ext import (
 )
 
 import config
-import claude_client
+import ai_client
 import instagram_client
-from instagram_client import RateLimitError
+import history
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -25,145 +34,134 @@ logger = logging.getLogger(__name__)
 
 _IG_URL_RE = re.compile(r"https?://(www\.)?instagram\.com/\S+")
 
-_STYLE_LABELS = {
-    "yumor": "😄 Yumor",
-    "aqlli": "🧠 Aqlli",
-    "bahsli": "🔥 Bahsli",
-}
-
 
 def _authorized(update: Update) -> bool:
     if not config.ALLOWED_TELEGRAM_IDS:
-        return True  # ro'yxat bo'sh bo'lsa — hammaga ochiq (tavsiya etilmaydi)
+        return True
     user = update.effective_user
     return bool(user and user.id in config.ALLOWED_TELEGRAM_IDS)
 
 
+def _provider() -> str:
+    provs = ai_client.available_providers()
+    return provs[0]["id"] if provs else "claude"
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
-        await update.message.reply_text("Kechirasiz, sizda ruxsat yo'q.")
         return
     await update.message.reply_text(
-        "Salom! Men 'Komment qiroli' botiman.\n\n"
-        "1. Menga Instagram video (Reel) havolasini yuboring.\n"
-        "2. Men videoni o'qib, 3 xil olovli komment tayyorlayman.\n"
-        "3. Yoqqanini tugma orqali tanlang — men uni Instagramga joylayman.\n\n"
-        "Yoki havola o'rniga shunchaki video mavzusini matn qilib yuborsangiz ham bo'ladi "
-        "(lekin u holda komment qo'lda joylanadi)."
+        "Salom! Men 'Komment Qiroli' avtomatlashtirish botiman.\n\n"
+        "Instagram havolasini menga (yoki men admin bo'lgan kanalga) tashlang — "
+        "men har akkauntga uning xususiyatiga mos ALOHIDA komment yozaman va like bosaman, "
+        "holatni shu yerga yozib boraman."
     )
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _run_auto(bot, chat_id: int, url: str, reply_to: int | None = None) -> None:
+    """Bitta havola uchun barcha akkauntlardan avto komment + like; holat tahrirlanib boriladi."""
+    loop = asyncio.get_event_loop()
+    status = await bot.send_message(
+        chat_id=chat_id, text="⏳ Avto-komment boshlandi...", reply_to_message_id=reply_to
+    )
+    sid = status.message_id
+
+    async def upd(text: str):
+        try:
+            await bot.edit_message_text(text=text[:4000], chat_id=chat_id, message_id=sid)
+        except Exception:
+            pass
+
+    try:
+        media_id, caption, thumb = await loop.run_in_executor(None, instagram_client.fetch_media, url)
+    except Exception as e:
+        await upd(f"❌ Postni o'qib bo'lmadi: {str(e)[:150]}")
+        return
+    if not media_id:
+        await upd("❌ media_id topilmadi — bu postga avtomatik joylab bo'lmaydi.")
+        return
+
+    accounts = [a["username"] for a in instagram_client.list_accounts()]
+    if not accounts:
+        await upd("❌ Hech qanday akkaunt ulanmagan.")
+        return
+
+    prov = _provider()
+    img = None
+    ok = fail = 0
+    lines: list[str] = []
+
+    for u in accounts:
+        try:
+            persona = instagram_client.get_personality(u)
+            if caption:
+                text = await loop.run_in_executor(None, ai_client.generate_one, caption, persona, prov)
+            elif thumb:
+                if img is None:
+                    img = await loop.run_in_executor(
+                        None, lambda: requests.get(thumb, timeout=15).content
+                    )
+                text = await loop.run_in_executor(None, ai_client.generate_one_from_image, img, persona)
+            else:
+                raise RuntimeError("post matni ham, rasm ham yo'q")
+
+            await loop.run_in_executor(None, instagram_client.post_comment, media_id, text, u)
+            history.add(media_id, persona, text, url, u)
+
+            liked = ""
+            try:
+                await loop.run_in_executor(None, instagram_client.like_media, media_id, u)
+                history.add(media_id, "like", "❤️ like", url, u)
+                liked = " +❤️"
+            except Exception:
+                pass
+
+            ok += 1
+            lines.append(f"✅ @{u} ({persona}){liked}")
+        except Exception as e:
+            fail += 1
+            lines.append(f"❌ @{u}: {str(e)[:45]}")
+
+        await upd(f"⏳ {ok + fail}/{len(accounts)} ...\n" + "\n".join(lines[-12:]))
+
+    await upd(f"✅ Tugadi: {ok} komment, {fail} xato\n\n" + "\n".join(lines[-25:]))
+
+
+async def on_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await update.message.reply_text("Kechirasiz, sizda ruxsat yo'q.")
         return
+    m = _IG_URL_RE.search(update.message.text or "")
+    if not m:
+        await update.message.reply_text("Instagram havolasini yuboring.")
+        return
+    await _run_auto(context.bot, update.effective_chat.id, m.group(0), reply_to=update.message.message_id)
 
-    text = (update.message.text or "").strip()
-    url_match = _IG_URL_RE.search(text)
 
-    media_id = None
-    description = text
-
-    if url_match:
-        url = url_match.group(0)
-        await update.message.reply_text("Videoni o'qiyapman... ⏳")
-        try:
-            media_id, caption = await asyncio.to_thread(
-                instagram_client.fetch_caption, url
-            )
-        except Exception as e:
-            logger.exception("Instagram caption olishda xato")
-            await update.message.reply_text(f"Videoni o'qib bo'lmadi: {e}")
+async def on_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    post = update.channel_post
+    if not post or not post.text:
+        return
+    want = (config.TELEGRAM_CHANNEL_ID or "").lstrip("@")
+    if want:
+        if str(post.chat.id) != want and (post.chat.username or "") != want:
             return
-
-        if not caption:
-            await update.message.reply_text(
-                "Bu videoda matn (caption) yo'q ekan. Iltimos, video nima haqida ekanini "
-                "qisqacha matn qilib yuboring (men keyin shu media'ga joylayman)."
-            )
-            context.user_data["pending_media_id"] = media_id
-            return
-        description = caption
-    elif context.user_data.get("pending_media_id"):
-        # Oldin caption'siz video yuborilgan edi — bu xabar uning tavsifi
-        media_id = context.user_data.pop("pending_media_id")
-        description = text
-
-    await update.message.reply_text("Kommentlar tayyorlanmoqda... 🤖")
-    try:
-        comments = await asyncio.to_thread(
-            claude_client.generate_comments, description
-        )
-    except Exception as e:
-        logger.exception("Claude generatsiyasida xato")
-        await update.message.reply_text(f"Komment yaratib bo'lmadi: {e}")
+    m = _IG_URL_RE.search(post.text)
+    if not m:
         return
-
-    context.user_data["comments"] = comments
-    context.user_data["media_id"] = media_id
-
-    preview = "\n\n".join(
-        f"{_STYLE_LABELS[k]}:\n{comments[k]}" for k in ("yumor", "aqlli", "bahsli")
-    )
-
-    if media_id:
-        keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton(_STYLE_LABELS[k], callback_data=f"post:{k}")]
-             for k in ("yumor", "aqlli", "bahsli")]
-        )
-        await update.message.reply_text(
-            preview + "\n\nQaysi birini joylaymiz?", reply_markup=keyboard
-        )
-    else:
-        await update.message.reply_text(
-            preview
-            + "\n\n(Havola yuborilmagani uchun avtomatik joylab bo'lmaydi — yuqoridagi "
-            "matnni nusxalab, qo'lda joylang yoki Reel havolasini yuboring.)"
-        )
-
-
-async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    if not _authorized(update):
-        await query.edit_message_text("Kechirasiz, sizda ruxsat yo'q.")
-        return
-
-    _, style = query.data.split(":", 1)
-    comments = context.user_data.get("comments")
-    media_id = context.user_data.get("media_id")
-
-    if not comments or not media_id:
-        await query.edit_message_text(
-            "Sessiya eskirgan. Iltimos, video havolasini qaytadan yuboring."
-        )
-        return
-
-    text = comments[style]
-    await query.edit_message_text(f"Joylanmoqda ({_STYLE_LABELS[style]})... ⏳")
-
-    try:
-        await asyncio.to_thread(instagram_client.post_comment, media_id, text)
-    except RateLimitError as e:
-        await query.edit_message_text(f"⚠️ {e}")
-        return
-    except Exception as e:
-        logger.exception("Komment joylashda xato")
-        await query.edit_message_text(f"Joylab bo'lmadi: {e}")
-        return
-
-    await query.edit_message_text(f"✅ Joylandi:\n\n{text}")
+    await _run_auto(context.bot, post.chat.id, m.group(0), reply_to=post.message_id)
 
 
 def main() -> None:
+    if not config.TELEGRAM_BOT_TOKEN:
+        logger.warning("TELEGRAM_BOT_TOKEN yo'q — Telegram bot ishga tushmaydi.")
+        return
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(on_button, pattern=r"^post:"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    logger.info("Bot ishga tushdi.")
-    app.run_polling()
+    app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.TEXT, on_channel))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_dm))
+    logger.info("Telegram bot ishga tushdi.")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
