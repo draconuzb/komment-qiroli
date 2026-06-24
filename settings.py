@@ -25,6 +25,8 @@ _DEFAULTS = {
     "random_delay_min": config.RANDOM_DELAY_MIN,
     "random_delay_max": config.RANDOM_DELAY_MAX,
     "max_comments_per_day": config.MAX_COMMENTS_PER_DAY,
+    "account_gap_min": config.ACCOUNT_GAP_MIN,
+    "account_gap_max": config.ACCOUNT_GAP_MAX,
     "panel_password": config.PANEL_PASSWORD,
 }
 

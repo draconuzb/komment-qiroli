@@ -559,23 +559,46 @@ _JOBS: dict[str, dict] = {}
 _JOBS_MAX = 50
 
 
-def _start_job(label: str, usernames: list[str], worker) -> str:
+import random as _random
+
+# Login/sessiya bilan bog'liq xato belgilari — bunday akkaunt "o'lik" deb belgilanadi.
+_DEAD_HINTS = ("login", "sessiya", "o'lik", "logged_out", "logged out", "challenge",
+               "not found", "checkpoint", "401", "403", "unauthorized")
+
+
+def _start_job(label: str, usernames: list[str], worker, gap_range: tuple | None = None) -> str:
+    """Fon job. gap_range=(min,max) sekund berilsa — akkauntlar ORASIDA tasodifiy
+    tanaffus qiladi (kommentlar birma-bir, minutlab oralab yoziladi → bloklanmaslik)."""
     jid = secrets.token_urlsafe(8)
-    job = {"label": label, "total": len(usernames), "done": 0, "results": [], "finished": False}
+    job = {"label": label, "total": len(usernames), "done": 0, "results": [], "finished": False, "next_in": 0}
     _JOBS[jid] = job
-    # eski joblarni tozalab turamiz
     if len(_JOBS) > _JOBS_MAX:
         for old in list(_JOBS)[:-_JOBS_MAX]:
             _JOBS.pop(old, None)
 
     def run():
-        for u in usernames:
+        for idx, u in enumerate(usernames):
             try:
                 worker(u)
                 job["results"].append({"username": u, "ok": True})
             except Exception as e:
-                job["results"].append({"username": u, "ok": False, "error": str(e)})
+                msg = str(e) or e.__class__.__name__
+                job["results"].append({"username": u, "ok": False, "error": msg})
+                # Login/sessiya xatosi bo'lsa — akkauntni o'lik deb belgilab, davom etamiz.
+                if any(h in msg.lower() for h in _DEAD_HINTS):
+                    try:
+                        instagram_client.mark_dead(u)
+                    except Exception:
+                        pass
             job["done"] += 1
+            # Akkauntlar orasida tanaffus (oxirgisidan keyin emas).
+            if gap_range and idx < len(usernames) - 1:
+                wait = _random.uniform(gap_range[0], gap_range[1])
+                job["next_in"] = int(wait)
+                end = time.time() + wait
+                while time.time() < end and not job.get("stop"):
+                    time.sleep(1)
+                job["next_in"] = 0
         job["finished"] = True
 
     threading.Thread(target=run, daemon=True).start()
@@ -603,7 +626,8 @@ def post(body: PostBody, session: str | None = Cookie(default=None)):
         instagram_client.post_comment(body.media_id, body.text, u)
         history.add(body.media_id, body.style, body.text, body.url, u)
 
-    jid = _start_job("Komment", body.usernames, worker)
+    gap = (settings.get("account_gap_min"), settings.get("account_gap_max"))
+    jid = _start_job("Komment", body.usernames, worker, gap_range=gap)
     return {"job_id": jid, "total": len(body.usernames)}
 
 
@@ -666,7 +690,8 @@ def run(body: RunBody, session: str | None = Cookie(default=None)):
             except Exception:
                 pass  # like ixtiyoriy — komment muhimroq
 
-    jid = _start_job("Avto (komment+like)", accounts, worker)
+    gap = (settings.get("account_gap_min"), settings.get("account_gap_max"))
+    jid = _start_job("Avto (komment+like)", accounts, worker, gap_range=gap)
     return {"job_id": jid, "total": len(accounts)}
 
 

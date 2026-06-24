@@ -20,17 +20,20 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-# Port band emasligini tekshiramiz (boshqa loyihaga halaqit bermaslik uchun)
+# Eski konteynerni avval o'chiramiz (o'z portimizni ozod qilsin — re-deploy uchun).
+echo "♻️  Eski konteyner (bo'lsa) o'chirilmoqda..."
+docker rm -f "$NAME" 2>/dev/null || true
+
+# Endi port BOSHQA narsa (boshqa loyiha) tomonidan band emasligini tekshiramiz.
 if command -v ss >/dev/null 2>&1 && ss -ltn "( sport = :$PORT )" | grep -q ":$PORT"; then
-  echo "❌ $PORT porti band. Boshqa port bering:  bash deploy-minipc.sh 8091"
+  echo "❌ $PORT porti boshqa narsa tomonidan band. Boshqa port bering:  bash deploy-minipc.sh 8091"
   exit 1
 fi
 
 echo "🔨 Image qurilmoqda ($NAME)..."
-docker build -t "$NAME" .
-
-echo "♻️  Eski konteyner (bo'lsa) almashtirilmoqda..."
-docker rm -f "$NAME" 2>/dev/null || true
+# --network=host: build ichida internet (apt/pip) host DNS orqali ishlasin
+# (Docker daemon DNS muammosini chetlab o'tadi, daemon'ni qayta ishga tushirmaydi).
+docker build --network=host -t "$NAME" .
 
 echo "🚀 Ishga tushirilmoqda — port $PORT, proxysiz (uy IP), bot yoqiq..."
 docker run -d --name "$NAME" --restart unless-stopped \

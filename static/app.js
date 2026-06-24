@@ -586,8 +586,9 @@ async function pollJob(jobId, label) {
     try { j = await api(`/api/job/${jobId}`); }
     catch (e) { if (e.status === 401) { location.reload(); return null; } throw e; }
     if (j.finished) return j;
-    toast(`${label}: ${j.done}/${j.total} bajarildi...`, "info");
-    await new Promise((r) => setTimeout(r, 2500));
+    const waitTxt = j.next_in > 0 ? ` · keyingisi ~${j.next_in}s dan keyin` : "";
+    toast(`${label}: ${j.done}/${j.total} bajarildi${waitTxt}...`, "info");
+    await new Promise((r) => setTimeout(r, 3000));
   }
 }
 

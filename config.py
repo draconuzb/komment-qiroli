@@ -52,6 +52,10 @@ MIN_SECONDS_BETWEEN_COMMENTS = int(os.getenv("MIN_SECONDS_BETWEEN_COMMENTS", "90
 RANDOM_DELAY_MIN = float(os.getenv("RANDOM_DELAY_MIN", "4"))
 RANDOM_DELAY_MAX = float(os.getenv("RANDOM_DELAY_MAX", "12"))
 MAX_COMMENTS_PER_DAY = int(os.getenv("MAX_COMMENTS_PER_DAY", "30"))
+# Akkauntlararo kechikish (sekund) — komment/avto-run da har akkaunt orasida tasodifiy
+# minutli tanaffus (bloklanmaslik uchun: hammasi birdan emas, birma-bir yoziladi).
+ACCOUNT_GAP_MIN = int(os.getenv("ACCOUNT_GAP_MIN", "120"))   # 2 daqiqa
+ACCOUNT_GAP_MAX = int(os.getenv("ACCOUNT_GAP_MAX", "300"))   # 5 daqiqa
 
 # Web-panel
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.

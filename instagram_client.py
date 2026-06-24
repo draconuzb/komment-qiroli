@@ -154,6 +154,11 @@ def is_dead(username: str) -> bool:
     return _load_health().get(username, {}).get("alive") is False
 
 
+def mark_dead(username: str) -> None:
+    """Akkauntni o'lik deb belgilaydi (amal login xatosi bilan tushganda)."""
+    _set_health(username, False)
+
+
 def check_account(username: str) -> bool:
     """Sessiya tirikligini account_info orqali tekshiradi (tez, relogin'siz). Holatni saqlaydi."""
     try:
