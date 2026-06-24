@@ -483,7 +483,8 @@ def get_history(session: str | None = Cookie(default=None)):
 
 @app.get("/")
 def index():
-    return FileResponse(_STATIC_DIR / "index.html")
+    # index.html keshlanmasin — ?v= versiyali static fayllar har doim yangilansin.
+    return FileResponse(_STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 if __name__ == "__main__":
