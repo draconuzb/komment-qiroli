@@ -37,3 +37,6 @@ Thumbs.db
 
 # Deploy arxivi
 *.tar.gz
+
+# Handoff (server IP / Telegram ID'lar bor — lokal qolsin)
+HANDOFF.md
