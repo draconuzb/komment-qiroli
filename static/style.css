@@ -215,6 +215,12 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--muted); transition: all .15s;
 }
+.persona-sel {
+  flex: none; font: inherit; font-size: 11.5px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  border-radius: 8px; padding: 3px 6px; cursor: pointer; max-width: 130px;
+}
+.persona-sel:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
 .proxy-chip.has-proxy { color: var(--green); }
 .proxy-chip.no-proxy { color: var(--amber); }
 .acc-icon:hover, .proxy-chip:hover { background: var(--surface); transform: translateY(-1px); }

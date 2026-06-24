@@ -6,7 +6,7 @@ import json
 
 import settings
 import claude_client
-from prompts import SYSTEM_PROMPT, build_user_prompt, JSON_INSTRUCTION
+from prompts import SYSTEM_PROMPT, build_user_prompt, JSON_INSTRUCTION, build_persona_prompt
 
 _REQUIRED_KEYS = ("yumor", "aqlli", "bahsli")
 
@@ -80,6 +80,55 @@ def generate_comments(description: str, provider: str = "claude") -> dict:
             raise RuntimeError("Mistral API kaliti o'rnatilmagan.")
         return _generate_mistral(description)
     raise ValueError(f"Noma'lum provayder: {provider}")
+
+
+def _one_groq(caption: str, personality: str) -> str:
+    from groq import Groq
+    client = Groq(api_key=settings.get("groq_api_key"))
+    resp = client.chat.completions.create(
+        model=settings.get("groq_model"),
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_persona_prompt(caption, personality)},
+        ],
+    )
+    return (resp.choices[0].message.content or "").strip().strip('"').strip()
+
+
+def _one_mistral(caption: str, personality: str) -> str:
+    client = _mistral_client(settings.get("mistral_api_key"))
+    resp = client.chat.complete(
+        model=settings.get("mistral_model"),
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_persona_prompt(caption, personality)},
+        ],
+    )
+    return (resp.choices[0].message.content or "").strip().strip('"').strip()
+
+
+def generate_one(caption: str, personality: str, provider: str = "claude") -> str:
+    """Bitta akkaunt xususiyatiga mos BITTA komment (matn). Provayder bo'yicha."""
+    if provider == "groq" and settings.get("groq_api_key"):
+        return _one_groq(caption, personality)
+    if provider == "mistral" and settings.get("mistral_api_key"):
+        return _one_mistral(caption, personality)
+    # default / claude
+    if settings.get("anthropic_api_key"):
+        return claude_client.generate_one(caption, personality)
+    # claude kaliti yo'q bo'lsa — mavjud boshqasiga o'tamiz
+    if settings.get("groq_api_key"):
+        return _one_groq(caption, personality)
+    if settings.get("mistral_api_key"):
+        return _one_mistral(caption, personality)
+    raise RuntimeError("Hech qanday AI provayder kaliti yo'q.")
+
+
+def generate_one_from_image(image_bytes: bytes, personality: str, media_type: str = "image/jpeg") -> str:
+    """Caption yo'q — rasm + xususiyat asosida BITTA komment (faqat Claude vision)."""
+    if not settings.get("anthropic_api_key"):
+        raise RuntimeError("Rasm tahlili uchun Anthropic (Claude) API kaliti kerak.")
+    return claude_client.generate_one_from_image(image_bytes, personality, media_type)
 
 
 def generate_comments_from_image(image_bytes: bytes, media_type: str = "image/jpeg") -> dict:

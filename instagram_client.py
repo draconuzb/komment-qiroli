@@ -42,6 +42,7 @@ _SESSIONS_DIR = os.path.join(config.DATA_DIR, "sessions")
 _ACCOUNTS_FILE = os.path.join(config.DATA_DIR, "accounts.json")
 _COUNTER_FILE = os.path.join(config.DATA_DIR, "daily_counter.json")
 _PROXIES_FILE = os.path.join(config.DATA_DIR, "proxies.json")
+_PERSONAS_FILE = os.path.join(config.DATA_DIR, "personalities.json")
 
 _clients: dict[str, Client] = {}      # username -> tirik Client (kesh)
 _last_ts: dict[str, float] = {}       # username -> oxirgi komment vaqti
@@ -88,6 +89,39 @@ def _save_proxies(proxies: dict) -> None:
 
 def get_proxy(username: str) -> str:
     return _load_proxies().get(username, "")
+
+
+# ---------- Akkaunt xususiyati (personality) ----------
+
+def _load_personas() -> dict:
+    if os.path.exists(_PERSONAS_FILE):
+        try:
+            with open(_PERSONAS_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_personas(data: dict) -> None:
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    with open(_PERSONAS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def get_personality(username: str) -> str:
+    from prompts import DEFAULT_PERSONALITY, PERSONALITIES
+    p = _load_personas().get(username, DEFAULT_PERSONALITY)
+    return p if p in PERSONALITIES else DEFAULT_PERSONALITY
+
+
+def set_personality(username: str, personality: str) -> None:
+    from prompts import PERSONALITIES, DEFAULT_PERSONALITY
+    if personality not in PERSONALITIES:
+        personality = DEFAULT_PERSONALITY
+    data = _load_personas()
+    data[username] = personality
+    _save_personas(data)
 
 
 def _sess_name(s: str) -> str:
@@ -424,6 +458,7 @@ def list_accounts() -> list[dict]:
             "daily_count": get_daily_count(u),
             "daily_limit": limit,
             "proxy": proxy_display(get_proxy(u)),
+            "personality": get_personality(u),
         }
         for u in _load_accounts()
     ]

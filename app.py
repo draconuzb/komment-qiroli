@@ -210,6 +210,25 @@ def test_account_proxy(username: str, session: str | None = Cookie(default=None)
     return {"ok": True, "username": name}
 
 
+# ---------- Akkaunt xususiyati (personality) ----------
+
+@app.get("/api/personalities")
+def personalities():
+    from prompts import PERSONALITIES, DEFAULT_PERSONALITY
+    return {"personalities": PERSONALITIES, "default": DEFAULT_PERSONALITY}
+
+
+class PersonaBody(BaseModel):
+    personality: str
+
+
+@app.post("/api/accounts/{username}/personality")
+def set_personality(username: str, body: PersonaBody, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    instagram_client.set_personality(username, body.personality)
+    return {"ok": True, "accounts": instagram_client.list_accounts()}
+
+
 # ---------- Modem pool (o'z 4G modemlaringiz) ----------
 
 import modem_pool
@@ -549,6 +568,63 @@ def post(body: PostBody, session: str | None = Cookie(default=None)):
 
     jid = _start_job("Komment", body.usernames, worker)
     return {"job_id": jid, "total": len(body.usernames)}
+
+
+# ---------- AVTO: har akkaunt o'z xususiyatiga mos komment + like ----------
+
+class RunBody(BaseModel):
+    url: str
+    usernames: list[str] = []   # bo'sh => barcha akkauntlar
+    provider: str = ""
+    like: bool = True
+
+
+@app.post("/api/run")
+def run(body: RunBody, session: str | None = Cookie(default=None)):
+    """Link uchun: har akkaunt o'z XUSUSIYATIga + caption'ga mos ALOHIDA komment
+    yaratadi, joylaydi va (like=True bo'lsa) avtomatik like bosadi — fon rejimida."""
+    _check_auth(session)
+    if not body.url:
+        raise HTTPException(status_code=400, detail="Havola (url) kerak")
+    accounts = body.usernames or [a["username"] for a in instagram_client.list_accounts()]
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Kamida bitta akkaunt kerak")
+
+    # Media bir marta o'qiladi (tez, og: meta).
+    try:
+        media_id, caption, thumb_url = _fetch_media_cached(body.url)
+    except NotLoggedInError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
+    if not media_id:
+        raise HTTPException(status_code=422, detail="media_id topilmadi — bu postga avtomatik joylab bo'lmaydi")
+
+    provs = ai_client.available_providers()
+    provider = body.provider or (provs[0]["id"] if provs else "claude")
+    img_cache = {}
+
+    def worker(u):
+        persona = instagram_client.get_personality(u)
+        if caption:
+            text = ai_client.generate_one(caption, persona, provider)
+        elif thumb_url:
+            if "img" not in img_cache:
+                img_cache["img"] = _download_image(thumb_url)
+            text = ai_client.generate_one_from_image(img_cache["img"], persona)
+        else:
+            raise RuntimeError("Postda matn ham, rasm ham yo'q")
+        instagram_client.post_comment(media_id, text, u)
+        history.add(media_id, persona, text, body.url, u)
+        if body.like:
+            try:
+                instagram_client.like_media(media_id, u)
+                history.add(media_id, "like", "❤️ like", body.url, u)
+            except Exception:
+                pass  # like ixtiyoriy — komment muhimroq
+
+    jid = _start_job("Avto (komment+like)", accounts, worker)
+    return {"job_id": jid, "total": len(accounts)}
 
 
 # ---------- Like ----------

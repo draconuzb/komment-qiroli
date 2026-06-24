@@ -36,6 +36,53 @@ def build_user_prompt_vision() -> str:
 Bu postda matn (caption) yo'q — faqat rasmga qarab, undagi voqea/predmet/holatni tushunib, shunga mos jonli o'zbekcha izoh yoz."""
 
 
+# ---------- Akkaunt xususiyatlari (personality) ----------
+# Har akkauntga bitta xususiyat biriktiriladi. Link generatsiya qilinganda har akkaunt
+# o'z xususiyatiga + caption'ga mos ALOHIDA bitta komment oladi (bir xil emas).
+PERSONALITIES = {
+    "yumor":     {"label": "😄 Hazilkash",    "desc": "Yumor / sarkazm"},
+    "heyter":    {"label": "😈 Heyter",        "desc": "Tanqidchi / provokatsion"},
+    "maqtov":    {"label": "👏 Maqtovchi",     "desc": "Iliq maqtaydi"},
+    "qollab":    {"label": "🤝 Ma'qullovchi",  "desc": "Rozi bo'ladi, qo'llab-quvvatlaydi"},
+    "bilmasvoy": {"label": "🤔 Bilmasvoy",     "desc": "Sodda, kutilmagan savol beradi"},
+}
+DEFAULT_PERSONALITY = "yumor"
+
+_PERSONA_INSTR = {
+    "yumor": "Uslub — HAZILKASH: kulgili, o'tkir hazil yoki yengil sarkazm. Haqoratsiz.",
+    "heyter": "Uslub — HEYTER: biroz provokatsion, e'tiroz bildiradigan, bahsga chorlaydigan tanqid. Lekin so'kinish, haqorat va tahdid MUTLAQO yo'q.",
+    "maqtov": "Uslub — MAQTOVCHI: samimiy, iliq maqtov. Videoni yoki muallifni ruhlantiradi, lekin yaltoqlanmaydi.",
+    "qollab": "Uslub — MA'QULLOVCHI: fikrga qo'shiladi, qo'llab-quvvatlaydi ('to'g'ri aytasiz', 'aynan' ohangida), o'z tajribasidan misol qo'shadi.",
+    "bilmasvoy": "Uslub — BILMASVOY: soddalik bilan kutilmagan, biroz kulgili savol beradi yoki tushunmagandek yozadi (befahmlikni o'ynaydi).",
+}
+
+
+def _persona_rules(instr: str) -> str:
+    return (
+        f"{instr}\n"
+        "Qoidalar: 1-2 ta QISQA gap; jonli, kundalik o'zbek tili; AI yozgani umuman "
+        "sezilmasin; eng ko'pi 1 ta emoji (yoki umuman yo'q); 'obuna bo'l/profilimga o't' "
+        "deyilmaydi. FAQAT izoh matnini qaytar — boshqa hech qanday matn, qo'shtirnoq yoki izoh yo'q."
+    )
+
+
+def build_persona_prompt(caption: str, personality: str) -> str:
+    instr = _PERSONA_INSTR.get(personality, _PERSONA_INSTR[DEFAULT_PERSONALITY])
+    return (
+        f"Quyidagi Instagram post matni asosida BITTA o'zbekcha izoh yoz.\n"
+        f"{_persona_rules(instr)}\n\nPost matni: {caption}"
+    )
+
+
+def build_persona_prompt_vision(personality: str) -> str:
+    instr = _PERSONA_INSTR.get(personality, _PERSONA_INSTR[DEFAULT_PERSONALITY])
+    return (
+        "Quyidagi Instagram post/video MUQOVA RASMI asosida BITTA o'zbekcha izoh yoz "
+        "(post matni yo'q — faqat rasmga qarab fikrla).\n"
+        f"{_persona_rules(instr)}"
+    )
+
+
 # Groq/Mistral uchun (structured output yo'q) — JSON formatini prompt orqali majburlaymiz.
 JSON_INSTRUCTION = (
     "\n\nJavobni FAQAT quyidagi JSON formatida qaytar, boshqa hech qanday matn yozma:\n"

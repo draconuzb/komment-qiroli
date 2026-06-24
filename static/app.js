@@ -6,6 +6,11 @@ const STYLE_META = {
   bahsli: { label: "🔥 Bahsli",          short: "🔥", badge: "badge--bahsli", cls: "bahsli" },
 };
 const ACTION_ICON = { like: "❤️", repost: "🔁", story: "📖", view: "👁" };
+// Akkaunt xususiyatlari (backend prompts.py bilan mos bo'lsin)
+const PERSONAS = {
+  yumor: "😄 Hazilkash", heyter: "😈 Heyter", maqtov: "👏 Maqtovchi",
+  qollab: "🤝 Ma'qullovchi", bilmasvoy: "🤔 Bilmasvoy",
+};
 const RING_C = 2 * Math.PI * 16; // r=16
 
 // === Repost / Story vaqtincha O'CHIRILGAN (GB tejash uchun) ===
@@ -132,8 +137,13 @@ function renderAccounts(accounts) {
     const row = document.createElement("div");
     row.className = "account-row";
     row.style.animationDelay = `${Math.min(idx, 20) * 25}ms`;
+    const persona = a.personality || "yumor";
+    const opts = Object.entries(PERSONAS).map(
+      ([k, v]) => `<option value="${k}"${k === persona ? " selected" : ""}>${v}</option>`
+    ).join("");
     row.innerHTML = `
       <span class="acc-name" title="@${a.username}"><span class="dot"></span>@${a.username}</span>
+      <select class="persona-sel" title="Akkaunt xususiyati — shunga mos komment yoziladi">${opts}</select>
       <span class="acc-usage" title="Bugun: ${a.daily_count}/${a.daily_limit}">
         <i class="usage-bar"><b style="width:${(pct * 100).toFixed(0)}%"></b></i>${a.daily_count}/${a.daily_limit}
       </span>
@@ -141,6 +151,7 @@ function renderAccounts(accounts) {
         title="${hasProxy ? a.proxy : "Proxysiz — o'rnatish uchun bosing"}">${hasProxy ? "🛡" : "⚠️"}</button>
       <button class="acc-icon" data-act="testproxy" title="Proxyni tekshirish">↻</button>
       <button class="acc-icon acc-remove" title="O'chirish">×</button>`;
+    row.querySelector(".persona-sel").onchange = (e) => doSetPersonality(a.username, e.target.value);
     row.querySelector('[data-act="setproxy"]').onclick = () => doSetProxy(a.username, a.proxy);
     row.querySelector('[data-act="testproxy"]').onclick = (e) => doTestProxy(a.username, e.currentTarget);
     row.querySelector(".acc-remove").onclick = () => doRemoveAccount(a.username);
@@ -314,6 +325,40 @@ async function doRemoveAccount(username) {
     refreshAccountsUI();
     toast(`@${username} o'chirildi`, "info");
   } catch (e) { toast(e.message, "err"); }
+}
+
+async function doSetPersonality(username, personality) {
+  try {
+    const res = await api(`/api/accounts/${encodeURIComponent(username)}/personality`, {
+      method: "POST", body: JSON.stringify({ personality }),
+    });
+    state.accounts = res.accounts;
+    toast(`@${username}: ${PERSONAS[personality] || personality} belgilandi`, "ok");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  }
+}
+
+// AVTO: link uchun har akkaunt o'z xususiyatiga mos komment yozadi + like bosadi
+async function doAutoRun() {
+  const text = $("input-text").value.trim();
+  const m = text.match(/https?:\/\/(www\.)?instagram\.com\/\S+/);
+  if (!m) { toast("Avval Instagram havolasini kiriting", "err"); return; }
+  const provider = $("provider-select").value;
+  const btn = $("auto-btn");
+  setLoading(btn, true);
+  try {
+    const start = await api("/api/run", {
+      method: "POST", body: JSON.stringify({ url: m[0], provider, like: true }),
+    });
+    toast(`Avto: ${start.total} akkaunt navbatda — har biriga xususiyatga mos komment + like...`, "info");
+    const res = await pollJob(start.job_id, "Avto");
+    if (res) reportResults(res, "Avto (komment+like)");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
 }
 
 // ---------- Modemlar (o'z 4G IP pool) ----------
@@ -778,6 +823,7 @@ $("modems-detect-btn").onclick = (e) => doDetectModems(e.currentTarget);
 $("modems-config-btn").onclick = (e) => doGenConfig(e.currentTarget);
 $("modems-assign-btn").onclick = (e) => doAssignAll(e.currentTarget);
 $("generate-btn").onclick = doGenerate;
+$("auto-btn").onclick = doAutoRun;
 $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));
 $("story-btn").onclick = () => doStory($("story-btn"));
