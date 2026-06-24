@@ -403,3 +403,14 @@ textarea:focus, .ig-connect input:focus, #provider-select:focus, .field input:fo
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   .bg-blobs { display: none; }
 }
+
+/* ---------- Modemlar (4G IP pool) ---------- */
+.modems-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.modem-ip { font-family: ui-monospace, monospace; font-size: 12px; min-width: 90px; text-align: right; }
+.config-out {
+  margin-top: 10px; padding: 12px; border-radius: 10px;
+  background: rgba(0,0,0,.35); color: #cde;
+  font-family: ui-monospace, monospace; font-size: 12px;
+  white-space: pre-wrap; max-height: 320px; overflow: auto;
+}
+#modem-rotate-type { padding: 8px; border-radius: 8px; }

@@ -106,6 +106,7 @@ async function loadStatus() {
   renderAccounts(state.accounts);
   renderProviders(s.providers || [], s.default_provider);
   renderPickAccounts(state.accounts);
+  loadModems();
 
   const n = state.accounts.length;
   $("accounts-count").textContent = `${n} akkaunt`;
@@ -313,6 +314,132 @@ async function doRemoveAccount(username) {
     refreshAccountsUI();
     toast(`@${username} o'chirildi`, "info");
   } catch (e) { toast(e.message, "err"); }
+}
+
+// ---------- Modemlar (o'z 4G IP pool) ----------
+async function loadModems() {
+  try {
+    const res = await api("/api/modems");
+    renderModems(res.modems || []);
+  } catch (_) { /* modem yo'q bo'lsa jim */ }
+}
+
+function renderModems(modems) {
+  const box = $("modems-list");
+  if (!modems.length) {
+    box.innerHTML = '<p class="muted empty">Hali modem yo\'q. Quyidan qo\'shing yoki Avto-aniqlash bosing.</p>';
+    return;
+  }
+  box.innerHTML = "";
+  modems.forEach((m) => {
+    const row = document.createElement("div");
+    row.className = "account-row";
+    const rot = m.rotate_type ? `↻ ${m.rotate_type}` : "rotation yo'q";
+    row.innerHTML = `
+      <span class="acc-name" title="${m.label}"><span class="dot"></span>${m.label}</span>
+      <span class="acc-usage" title="Biriktirilgan akkauntlar">${m.accounts} akk · <code>${m.ext_ip}</code></span>
+      <span class="muted modem-ip" id="mip-${m.id}" title="Joriy tashqi IP">?</span>
+      <button class="acc-icon" data-act="ip" title="IP'ni tekshirish">🌐</button>
+      <button class="acc-icon" data-act="rot" title="${rot} — IP'ni yangilash">↻</button>
+      <button class="acc-icon acc-remove" title="O'chirish">×</button>`;
+    row.querySelector('[data-act="ip"]').onclick = (e) => doModemIp(m.id, e.currentTarget);
+    row.querySelector('[data-act="rot"]').onclick = (e) => doRotateModem(m.id, e.currentTarget);
+    row.querySelector(".acc-remove").onclick = () => doRemoveModem(m.id);
+    box.appendChild(row);
+  });
+}
+
+async function doAddModem() {
+  const ext_ip = $("modem-extip").value.trim();
+  if (!ext_ip) { toast("ext_ip kiriting", "err"); return; }
+  const label = $("modem-label").value.trim();
+  const rotate_type = $("modem-rotate-type").value;
+  const rv = $("modem-rotate-val").value.trim();
+  const body = { ext_ip, label, rotate_type,
+    rotate_url: rotate_type === "huawei" ? rv : "",
+    rotate_serial: rotate_type === "adb" ? rv : "" };
+  const btn = $("modem-add-btn");
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/modems", { method: "POST", body: JSON.stringify(body) });
+    $("modem-extip").value = ""; $("modem-label").value = ""; $("modem-rotate-val").value = "";
+    renderModems(res.modems);
+    toast(`Modem qo'shildi: ${res.modem.label} → port ${res.modem.port}`, "ok");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function doRemoveModem(id) {
+  if (!confirm(`${id} modem o'chirilsinmi? (akkauntlar bo'shaydi)`)) return;
+  try {
+    const res = await api(`/api/modems/${encodeURIComponent(id)}`, { method: "DELETE" });
+    renderModems(res.modems);
+    toast(`${id} o'chirildi`, "info");
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function doModemIp(id, btn) {
+  setLoading(btn, true);
+  try {
+    const res = await api(`/api/modems/${encodeURIComponent(id)}/ip`, { method: "POST" });
+    const el = $(`mip-${id}`); if (el) el.textContent = res.ip;
+    toast(`${id}: ${res.ip}`, "ok");
+  } catch (e) { toast(`${id}: ${e.message}`, "err"); }
+  finally { setLoading(btn, false); }
+}
+
+async function doRotateModem(id, btn) {
+  setLoading(btn, true);
+  try {
+    const res = await api(`/api/modems/${encodeURIComponent(id)}/rotate`, { method: "POST" });
+    const el = $(`mip-${id}`); if (el) el.textContent = res.ip;
+    toast(`${id}: yangi IP → ${res.ip}`, "ok");
+  } catch (e) { toast(`${id}: ${e.message}`, "err"); }
+  finally { setLoading(btn, false); }
+}
+
+async function doDetectModems(btn) {
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/modems/detect", { method: "POST" });
+    const c = res.candidates || [];
+    if (!c.length) { toast("Modemga o'xshash interfeys topilmadi", "info"); return; }
+    // Birinchi taklifni formaga to'ldiramiz
+    $("modem-extip").value = c[0].ext_ip;
+    if (c[0].guess_rotate_url) {
+      $("modem-rotate-type").value = "huawei";
+      $("modem-rotate-val").value = c[0].guess_rotate_url;
+    }
+    toast(`${c.length} ta nomzod topildi — birinchisi formaga to'ldirildi`, "ok");
+  } catch (e) { toast(e.message, "err"); }
+  finally { setLoading(btn, false); }
+}
+
+async function doGenConfig(btn) {
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/modems/config", { method: "POST" });
+    const out = $("modems-config-out");
+    out.style.display = "";
+    out.textContent = `# saqlandi: ${res.path}\n\n${res.config}`;
+    toast("3proxy config yaratildi", "ok");
+  } catch (e) { toast(e.message, "err"); }
+  finally { setLoading(btn, false); }
+}
+
+async function doAssignAll(btn) {
+  if (!confirm("Barcha akkauntlar modemlarga balanslab taqsimlansinmi?")) return;
+  setLoading(btn, true);
+  try {
+    const res = await api("/api/modems/assign-all", { method: "POST" });
+    state.accounts = res.accounts;
+    refreshAccountsUI();
+    renderModems(res.modems);
+    toast("Akkauntlar modemlarga taqsimlandi ✓", "ok");
+  } catch (e) { toast(e.message, "err"); }
+  finally { setLoading(btn, false); }
 }
 
 // ---------- Generate ----------
@@ -627,6 +754,10 @@ $("ig-login-btn").onclick = doLoginAccount;
 $("ig-2fa-btn").onclick = doVerify2FA;
 $("iglogin-password").addEventListener("keydown", (e) => { if (e.key === "Enter") doLoginAccount(); });
 $("iglogin-2fa").addEventListener("keydown", (e) => { if (e.key === "Enter") doVerify2FA(); });
+$("modem-add-btn").onclick = doAddModem;
+$("modems-detect-btn").onclick = (e) => doDetectModems(e.currentTarget);
+$("modems-config-btn").onclick = (e) => doGenConfig(e.currentTarget);
+$("modems-assign-btn").onclick = (e) => doAssignAll(e.currentTarget);
 $("generate-btn").onclick = doGenerate;
 $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));

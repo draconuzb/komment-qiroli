@@ -113,8 +113,42 @@
         </details>
       </section>
 
+      <!-- Modemlar (o'z 4G IP pool) -->
+      <section class="card reveal" style="--d:5">
+        <div class="card-head">
+          <h2>Modemlar <span class="muted">(o'z 4G IP pool)</span></h2>
+          <span class="muted" id="modems-hint">IPRoyal o'rniga o'z UZ mobil IP'laringiz</span>
+        </div>
+        <div id="modems-list" class="accounts-list"></div>
+
+        <div class="modems-actions">
+          <button class="btn btn--ghost btn--sm" id="modems-detect-btn">🔍 Avto-aniqlash</button>
+          <button class="btn btn--ghost btn--sm" id="modems-config-btn">⚙️ 3proxy config</button>
+          <button class="btn btn--ghost btn--sm" id="modems-assign-btn">🔗 Akkauntlarni taqsimlash</button>
+        </div>
+
+        <details class="howto">
+          <summary>+ Modem qo'shish</summary>
+          <p class="muted">Har modem = bitta UZ mobil IP. <code>ext_ip</code> — modemning host'dagi chiquvchi IP'si (Avto-aniqlash taklif qiladi). 5 akkaunt/modem tavsiya.</p>
+          <div class="ig-connect">
+            <input type="text" id="modem-extip" placeholder="ext_ip (mas: 192.168.8.100)" autocomplete="off" />
+            <input type="text" id="modem-label" placeholder="Nom (ixtiyoriy, mas: Beeline-1)" autocomplete="off" />
+            <button class="btn btn--primary" id="modem-add-btn"><span class="btn-label">Qo'shish</span></button>
+          </div>
+          <div class="ig-connect" style="margin-top:8px;">
+            <select id="modem-rotate-type">
+              <option value="">Rotation: yo'q</option>
+              <option value="huawei">Huawei (HTTP API)</option>
+              <option value="adb">Android (ADB)</option>
+            </select>
+            <input type="text" id="modem-rotate-val" placeholder="Huawei: http://192.168.8.1  ·  ADB: serial" autocomplete="off" />
+          </div>
+          <pre id="modems-config-out" class="config-out" style="display:none;"></pre>
+        </details>
+      </section>
+
       <!-- Generatsiya -->
-      <section class="card generate-card reveal" style="--d:5">
+      <section class="card generate-card reveal" style="--d:6">
         <h2>Yangi komment yaratish</h2>
         <p class="muted">Instagram video yoki rasm havolasini, yoki post mavzusini kiriting.</p>
         <textarea id="input-text" rows="3" placeholder="https://www.instagram.com/reel/...&#10;yoki: 'Mashina tuningi haqidagi video'"></textarea>

@@ -54,6 +54,12 @@ MAX_COMMENTS_PER_DAY = int(os.getenv("MAX_COMMENTS_PER_DAY", "30"))
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.
 PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "")
 
+# Proxy rejimi (avtomatik proxy qaysi manbadan):
+#   "local"   — o'z 4G modem pool'ingiz (modem_pool.py / modems.json). BEPUL, UZ mobil IP.
+#   "iproyal" — IPRoyal residential (pastdagi PROXY_* creds).
+#   "auto"    — modemlar sozlangan bo'lsa "local", aks holda "iproyal".
+PROXY_MODE = os.getenv("PROXY_MODE", "auto")
+
 # Avtomatik proxy (IPRoyal residential) — yangi akkaunt qo'shilganda har biriga
 # avtomatik alohida UZ sticky-IP biriktiriladi (proxy maydonini bo'sh qoldirsa).
 PROXY_AUTO = os.getenv("PROXY_AUTO", "") == "1"
@@ -63,3 +69,7 @@ PROXY_USER = os.getenv("PROXY_USER", "")
 PROXY_PASS = os.getenv("PROXY_PASS", "")
 PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "uz")
 PROXY_LIFETIME = os.getenv("PROXY_LIFETIME", "30m")
+
+# Webhook (kiruvchi trigger) — tashqi skript/cron botni avtomatik boshqarishi uchun.
+# Bo'sh bo'lsa webhook o'chiq. So'rovda X-Webhook-Token header yoki ?token= bilan keladi.
+WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "")

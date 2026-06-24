@@ -107,6 +107,43 @@ def build_auto_proxy(token: str) -> str:
     return f"http://{config.PROXY_USER}:{pw}@{config.PROXY_HOST}{port}"
 
 
+def _use_local_pool() -> bool:
+    """Avto-proxy local modem pool'dan olinishi kerakmi (config.PROXY_MODE bo'yicha)."""
+    mode = getattr(config, "PROXY_MODE", "auto")
+    if mode == "local":
+        return True
+    if mode == "iproyal":
+        return False
+    # "auto": modemlar sozlangan bo'lsa local.
+    try:
+        import modem_pool
+        return modem_pool.has_modems()
+    except Exception:
+        return False
+
+
+def auto_proxy_for(username: str) -> str:
+    """Akkaunt uchun avtomatik proxy: local modem pool yoki IPRoyal (rejimga qarab)."""
+    if _use_local_pool():
+        try:
+            import modem_pool
+            return modem_pool.assign(username)  # sticky biriktiradi
+        except Exception:
+            return ""
+    return build_auto_proxy(username)
+
+
+def _bootstrap_proxy() -> str:
+    """Username noma'lum bo'lganda (sessionid login) login uchun vaqtinchalik UZ proxy."""
+    if _use_local_pool():
+        try:
+            import modem_pool
+            return modem_pool.bootstrap_proxy()
+        except Exception:
+            return ""
+    return ""  # IPRoyal'da chaqiruvchi build_auto_proxy(hash) ishlatadi
+
+
 def proxy_display(proxy: str) -> str:
     """Login/parolsiz ko'rsatish uchun (scheme://host:port)."""
     if not proxy:
@@ -203,8 +240,10 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
     proxy = (proxy or "").strip()
     auto = not proxy
     if auto:
-        # Proxy berilmagan — avtomatik UZ IP (login uchun sessionid'dan barqaror token).
-        proxy = build_auto_proxy(hashlib.md5(sessionid.encode()).hexdigest()[:12])
+        # Proxy berilmagan — avto. Login uchun vaqtinchalik UZ IP (username hali noma'lum).
+        proxy = _bootstrap_proxy() or build_auto_proxy(
+            hashlib.md5(sessionid.encode()).hexdigest()[:12]
+        )
 
     cl = _new_client()
     if proxy:
@@ -224,7 +263,7 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
 
     # Avto rejimda — username bo'yicha barqaror UZ sticky-IP (har safar ~o'sha IP).
     if auto:
-        stable = build_auto_proxy(username)
+        stable = auto_proxy_for(username)
         if stable:
             proxy = stable
             try:
@@ -306,8 +345,8 @@ def start_login(username: str, password: str, proxy: str = "") -> dict:
 
     proxy = (proxy or "").strip()
     if not proxy:
-        # Proxy berilmagan — akkauntga avtomatik barqaror UZ sticky-IP.
-        proxy = build_auto_proxy(username)
+        # Proxy berilmagan — avto: local modem pool yoki IPRoyal (rejimga qarab).
+        proxy = auto_proxy_for(username)
 
     cl = _new_client()
     if proxy:
@@ -358,6 +397,11 @@ def remove_account(username: str) -> None:
     proxies = _load_proxies()
     if proxies.pop(username, None) is not None:
         _save_proxies(proxies)
+    try:  # local modem pool'dan ham bo'shatamiz
+        import modem_pool
+        modem_pool.unassign(username)
+    except Exception:
+        pass
     for path in (_session_path(username), _sid_path(username)):
         if os.path.exists(path):
             try:

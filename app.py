@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import requests
-from fastapi import Cookie, FastAPI, HTTPException, Response
+from fastapi import Cookie, FastAPI, Header, HTTPException, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -209,6 +209,95 @@ def test_account_proxy(username: str, session: str | None = Cookie(default=None)
     return {"ok": True, "username": name}
 
 
+# ---------- Modem pool (o'z 4G modemlaringiz) ----------
+
+import modem_pool
+
+
+@app.get("/api/modems")
+def get_modems(session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    return {"modems": modem_pool.list_modems(), "proxy_host": modem_pool.PROXY_HOST}
+
+
+class AddModemBody(BaseModel):
+    ext_ip: str
+    label: str = ""
+    rotate_type: str = ""   # "huawei" | "adb" | ""
+    rotate_url: str = ""    # huawei uchun (http://192.168.8.1)
+    rotate_serial: str = ""  # adb uchun
+
+
+@app.post("/api/modems")
+def add_modem(body: AddModemBody, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    rotate = {}
+    if body.rotate_type == "huawei" and body.rotate_url:
+        rotate = {"type": "huawei", "url": body.rotate_url}
+    elif body.rotate_type == "adb":
+        rotate = {"type": "adb", "serial": body.rotate_serial}
+    try:
+        m = modem_pool.add_modem(body.ext_ip, rotate=rotate, label=body.label)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "modem": m, "modems": modem_pool.list_modems()}
+
+
+@app.delete("/api/modems/{modem_id}")
+def delete_modem(modem_id: str, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    modem_pool.remove_modem(modem_id)
+    return {"ok": True, "modems": modem_pool.list_modems()}
+
+
+@app.post("/api/modems/{modem_id}/rotate")
+def rotate_modem(modem_id: str, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    try:
+        modem_pool.rotate(modem_id)
+        ip = modem_pool.current_ip(modem_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "ip": ip}
+
+
+@app.post("/api/modems/{modem_id}/ip")
+def modem_ip(modem_id: str, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    try:
+        ip = modem_pool.current_ip(modem_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "ip": ip}
+
+
+@app.post("/api/modems/detect")
+def detect_modems(session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    return {"candidates": modem_pool.detect_candidates()}
+
+
+@app.post("/api/modems/config")
+def modems_config(session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    cfg = modem_pool.gen_3proxy_config()
+    path = modem_pool.write_3proxy_config()
+    return {"ok": True, "config": cfg, "path": path}
+
+
+@app.post("/api/modems/assign-all")
+def assign_all(session: str | None = Cookie(default=None)):
+    """Barcha akkauntlarni modemlarga balanslab biriktiradi (mavjudlarni saqlaydi)."""
+    _check_auth(session)
+    if not modem_pool.has_modems():
+        raise HTTPException(status_code=400, detail="Avval kamida bitta modem qo'shing")
+    for a in instagram_client.list_accounts():
+        u = a["username"]
+        modem_pool.assign(u)
+        instagram_client.set_proxy(u, modem_pool.proxy_for(u))
+    return {"ok": True, "accounts": instagram_client.list_accounts(), "modems": modem_pool.list_modems()}
+
+
 # ---------- Generatsiya ----------
 
 class GenerateBody(BaseModel):
@@ -307,6 +396,93 @@ def generate(body: GenerateBody, session: str | None = Cookie(default=None)):
         "provider": body.provider,
         "comments": comments,
     }
+
+
+# ---------- Webhook (kiruvchi trigger — tashqi skript/cron uchun) ----------
+
+class HookBody(BaseModel):
+    url: str
+    action: str = "comment"      # "comment" | "like" | "both"
+    accounts: list[str] = []      # bo'sh => barcha ulangan akkauntlar
+    provider: str = ""            # bo'sh => birinchi mavjud AI
+    style: str = "aqlli"          # yumor | aqlli | bahsli (AI komment uslubi)
+    text: str = ""                # berilsa AI ishlatilmaydi, shu matn joylanadi
+
+
+def _check_webhook(token: str | None) -> None:
+    if not config.WEBHOOK_TOKEN:
+        raise HTTPException(status_code=503, detail="Webhook o'chiq (WEBHOOK_TOKEN .env'da yo'q)")
+    if not token or token != config.WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="Webhook token noto'g'ri")
+
+
+@app.post("/api/hook/run")
+def hook_run(
+    body: HookBody,
+    x_webhook_token: str | None = Header(default=None),
+    token: str | None = None,
+):
+    """Kiruvchi webhook: havola + amal => bot avtomatik AI komment yaratib joylaydi.
+
+    Auth: `X-Webhook-Token` header yoki `?token=` query (panel cookie kerak emas).
+    Misol:
+      curl -X POST 'http://HOST:8000/api/hook/run' \
+        -H 'X-Webhook-Token: SIZNING_TOKEN' -H 'Content-Type: application/json' \
+        -d '{"url":"https://instagram.com/reel/XXX/","action":"comment","style":"aqlli"}'
+    """
+    _check_webhook(x_webhook_token or token)
+
+    action = (body.action or "comment").lower()
+    if action not in ("comment", "like", "both"):
+        raise HTTPException(status_code=400, detail="action: comment | like | both")
+    if not body.url:
+        raise HTTPException(status_code=400, detail="url kerak")
+
+    accounts = body.accounts or [a["username"] for a in instagram_client.list_accounts()]
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Hech qanday akkaunt ulanmagan")
+
+    try:
+        media_id, caption, thumb_url = _fetch_media_cached(body.url)
+    except NotLoggedInError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
+
+    # Komment matni: berilgan bo'lsa o'sha, aks holda AI yaratadi (caption yoki rasmdan).
+    comment_text = (body.text or "").strip()
+    used_ai = False
+    if action in ("comment", "both") and not comment_text:
+        provs = ai_client.available_providers()
+        provider = body.provider or (provs[0]["id"] if provs else "claude")
+        try:
+            if caption:
+                comments = ai_client.generate_comments(caption, provider)
+            elif thumb_url:
+                comments = ai_client.generate_comments_from_image(_download_image(thumb_url))
+            else:
+                raise HTTPException(status_code=422, detail="caption ham, rasm ham yo'q — `text` bering")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Komment yaratib bo'lmadi: {e}")
+        comment_text = comments.get(body.style) or next(iter(comments.values()), "")
+        used_ai = True
+
+    results = []
+    for u in accounts:
+        try:
+            if action in ("like", "both"):
+                instagram_client.like_media(media_id, u)
+                history.add(media_id, "like", "❤️ like", body.url, u)
+            if action in ("comment", "both"):
+                instagram_client.post_comment(media_id, comment_text, u)
+                history.add(media_id, body.style, comment_text, body.url, u)
+            results.append({"username": u, "ok": True})
+        except Exception as e:
+            results.append({"username": u, "ok": False, "error": str(e)})
+
+    return {"ok": True, "action": action, "comment": comment_text, "used_ai": used_ai, "results": results}
 
 
 # ---------- Joylash (tanlangan akkauntlardan) ----------
