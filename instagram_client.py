@@ -6,13 +6,18 @@ aniqlanishi va akkauntlar bloklanishi mumkin. Himoyalar (har akkaunt uchun kunli
 limit, tasodifiy kechikish, alohida sessiya) xavfni kamaytiradi, lekin yo'qotmaydi.
 O'z mas'uliyatingiz ostida ishlating.
 """
+import concurrent.futures as _cf
 import hashlib
+import html as _html
 import json
 import os
 import random
+import re as _re
 import secrets
 import time
 from datetime import date
+
+import requests
 
 from instagrapi import Client
 
@@ -444,49 +449,123 @@ def _get_client(username: str) -> Client:
     return cl
 
 
-def _with_session(username: str, fn):
+def _with_session(username: str, fn, relogin: bool = True):
     """Amalni bajaradi. LoginRequired bo'lsa — sessionid orqali BIR marta qayta
-    kirishga urinadi; baribir bo'lmasa, sessiya haqiqatan eskirgan deb belgilaydi."""
+    kirishga urinadi; baribir bo'lmasa, sessiya haqiqatan eskirgan deb belgilaydi.
+
+    relogin=False — qayta-login urinmaydi (TEZ). O'qish (public media) uchun ishlatiladi:
+    login bo'roni 504 ga olib kelmasin."""
     cl = _get_client(username)
     try:
         return fn(cl)
     except _LOGIN_ERRORS:
-        sid = _load_sessionid(username)
-        if sid:
-            try:
-                cl.login_by_sessionid(sid)
-                cl.dump_settings(_session_path(username))
-                return fn(cl)  # qayta urinish
-            except Exception:
-                pass
+        if relogin:
+            sid = _load_sessionid(username)
+            if sid:
+                try:
+                    cl.login_by_sessionid(sid)
+                    cl.dump_settings(_session_path(username))
+                    return fn(cl)  # qayta urinish
+                except Exception:
+                    pass
         _clients.pop(username, None)
         raise NotLoggedInError(f"@{username} sessiyasi eskirgan. Qaytadan ulang.")
 
 
 # ---------- Media (video yoki rasm) ----------
 
+_FB_UA = ("Mozilla/5.0 (compatible; facebookexternalhit/1.1; "
+          "+http://www.facebook.com/externalhit_uatext.php)")
+
+
+def _meta(prop: str, h: str) -> str:
+    m = _re.search(rf'<meta property="og:{prop}" content="([^"]*)"', h)
+    return _html.unescape(m.group(1)) if m else ""
+
+
+def _fetch_via_page(url: str) -> tuple[str, str, str]:
+    """Reel/post sahifasining OMMAVIY og: meta teglaridan o'qiydi — login/gql kerak emas,
+    juda tez (~1-2s) va proxy GB ishlatmaydi (to'g'ridan-to'g'ri). Qaytaradi:
+    (media_id, caption, thumb_url). media_id topilmasa bo'sh bo'lishi mumkin."""
+    r = requests.get(url, headers={"User-Agent": _FB_UA}, timeout=15)
+    r.raise_for_status()
+    h = r.text
+    thumb = _meta("image", h)
+    title = _meta("title", h)        # 'USER on Instagram: "caption..."'
+    desc = _meta("description", h)   # 'N likes, M comments - user on date: "caption..."'
+
+    caption = ""
+    for s in (title, desc):
+        m = _re.search(r'on Instagram[:\-]\s*["“‘](.+)', s, _re.S)
+        if m:
+            caption = _re.sub(r'["”’\s.]+$', "", m.group(1).strip())
+            break
+    if not caption and ":" in desc:
+        caption = desc.split(":", 1)[1].strip().strip('"“” ')
+
+    mid = ""
+    mm = _re.search(r'"media_id":"(\d+_\d+)"', h) or _re.search(r'"media_id":"(\d+)"', h)
+    if mm:
+        mid = mm.group(1)
+    return mid, caption.strip(), thumb
+
+
 def _fetch_with(cl: Client, url: str) -> tuple[str, str, str]:
-    pk = cl.media_pk_from_url(url)
-    media = cl.media_info(pk)
+    pk = cl.media_pk_from_url(url)  # shortcode'dan lokal hisoblanadi (tarmoqsiz)
+    # Avval ommaviy GraphQL — login shart emas, tez (1 ta so'rov). Faqat u bo'lmasa
+    # v1 (login kerak) ga o'tamiz — o'lik sessiyalarda v1 sekin va baribir yiqiladi.
+    try:
+        media = cl.media_info_gql(pk)
+    except Exception:
+        media = cl.media_info(pk)
     thumb = str(getattr(media, "thumbnail_url", "") or "")
     return cl.media_id(pk), (media.caption_text or "").strip(), thumb
+
+
+_EXEC = _cf.ThreadPoolExecutor(max_workers=4)
+
+
+def _run_timeout(fn, timeout: float):
+    """fn ni alohida thread'da bajaradi va `timeout` sek ichida natija qaytmasa
+    TimeoutError beradi (instagrapi ichki qayta urinishlari osib qo'ymasin)."""
+    fut = _EXEC.submit(fn)
+    return fut.result(timeout=timeout)  # vaqt o'tsa thread tashlab ketiladi
 
 
 def fetch_media(url: str) -> tuple[str, str, str]:
     """URL (video yoki rasm post) -> (media_id, caption_matni, muqova_rasm_url).
 
-    Faol akkauntlarni navbatma-navbat sinaydi; LoginRequired bo'lsa auto-reconnect
-    ishlaydi, boshqa xato bo'lsa keyingi akkauntga o'tadi."""
+    Public post o'qish uchun login shart emas (ommaviy GraphQL). TEZ bo'lishi uchun:
+    qayta-login yo'q, faqat birinchi bir necha akkaunt, har biriga QATTIQ timeout va
+    umumiy vaqt byudjeti — sekin/o'lik sessiyalar 504 ga olib kelmasin."""
+    # 1) ENG TEZ: ommaviy sahifa og: meta (login/gql/proxy kerak emas, ~1-2s).
+    try:
+        mid, caption, thumb = _run_timeout(lambda: _fetch_via_page(url), 18)
+        if caption or thumb:
+            return mid, caption, thumb
+    except Exception:
+        pass  # zaxira yo'liga o'tamiz
+
+    # 2) ZAXIRA: instagrapi gql (public) akkaunt proxysi orqali — sekinroq.
     accounts = _load_accounts()
     if not accounts:
-        raise NotLoggedInError("Hech qanday Instagram akkaunt ulanmagan. Avval akkaunt qo'shing.")
+        raise NotLoggedInError("Postni o'qib bo'lmadi (sahifa meta yo'q, akkaunt ham yo'q).")
     last_err: Exception | None = None
-    for u in accounts:
+    deadline = time.time() + 70  # umumiy vaqt byudjeti (sek)
+    # gql (public) instagrapi ichki qayta urinishlari bilan ~20s olishi mumkin, shuning
+    # uchun per-akkaunt timeout undan yuqori. Odatda 1-akkaunt'dayoq muvaffaqiyat.
+    for u in accounts[:3]:
+        if time.time() > deadline:
+            break
         try:
-            return _with_session(u, lambda cl: _fetch_with(cl, url))
+            return _run_timeout(
+                lambda: _with_session(u, lambda cl: _fetch_with(cl, url), relogin=False), 28
+            )
+        except _cf.TimeoutError:
+            last_err = NotLoggedInError(f"@{u}: postni o'qish juda sekin (timeout).")
         except Exception as e:
             last_err = e
-    raise last_err or NotLoggedInError("Faol akkaunt yo'q.")
+    raise last_err or NotLoggedInError("Postni o'qib bo'lmadi (faol akkaunt yo'q).")
 
 
 # ---------- Kunlik hisoblagich (har akkaunt uchun alohida) ----------
