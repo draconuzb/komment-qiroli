@@ -58,6 +58,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        return
+    accs = instagram_client.list_accounts()
+    if not accs:
+        await update.message.reply_text("Hech qanday akkaunt ulanmagan.")
+        return
+    alive = sum(1 for a in accs if (a.get("health") or {}).get("alive") is True)
+    dead = sum(1 for a in accs if (a.get("health") or {}).get("alive") is False)
+    lines = [f"📊 Akkauntlar: {len(accs)} · 🟢 {alive} tirik · 🔴 {dead} o'lik\n"]
+    for a in accs:
+        h = (a.get("health") or {}).get("alive")
+        ic = "🟢" if h is True else "🔴" if h is False else "⚪"
+        lines.append(f"{ic} @{a['username']} · {a.get('personality', '')} · {a['daily_count']}/{a['daily_limit']}")
+    await update.message.reply_text("\n".join(lines[:60]))
+
+
 async def _run_auto(bot, chat_id: int, url: str, reply_to: int | None = None) -> None:
     """Bitta havola uchun barcha akkauntlardan avto komment + like; holat tahrirlanib boriladi."""
     loop = asyncio.get_event_loop()
@@ -158,6 +175,7 @@ def main() -> None:
         return
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.TEXT, on_channel))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_dm))
     logger.info("Telegram bot ishga tushdi.")

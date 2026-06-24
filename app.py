@@ -229,6 +229,43 @@ def set_personality(username: str, body: PersonaBody, session: str | None = Cook
     return {"ok": True, "accounts": instagram_client.list_accounts()}
 
 
+# ---------- Sog'lik tekshiruvi + warm-up (fon job) ----------
+
+class AccountsBody(BaseModel):
+    usernames: list[str] = []   # bo'sh => barcha
+
+
+@app.post("/api/accounts/check")
+def accounts_check(body: AccountsBody, session: str | None = Cookie(default=None)):
+    """Tanlangan (yoki barcha) akkaunt sessiyasi tirikligini tekshiradi — fon job."""
+    _check_auth(session)
+    accounts = body.usernames or [a["username"] for a in instagram_client.list_accounts()]
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Akkaunt yo'q")
+
+    def worker(u):
+        if not instagram_client.check_account(u):
+            raise RuntimeError("o'lik (sessiya)")
+
+    jid = _start_job("Tekshiruv", accounts, worker)
+    return {"job_id": jid, "total": len(accounts)}
+
+
+@app.post("/api/accounts/warmup")
+def accounts_warmup(body: AccountsBody, session: str | None = Cookie(default=None)):
+    """Akkauntlarni 'isitadi' (yengil feed/reels ko'rish) — sessiya uzoq yashashiga yordam. Fon job."""
+    _check_auth(session)
+    accounts = body.usernames or [a["username"] for a in instagram_client.list_accounts()]
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Akkaunt yo'q")
+
+    def worker(u):
+        instagram_client.warmup(u)
+
+    jid = _start_job("Isitish", accounts, worker)
+    return {"job_id": jid, "total": len(accounts)}
+
+
 # ---------- Modem pool (o'z 4G modemlaringiz) ----------
 
 import modem_pool
@@ -605,6 +642,12 @@ def run(body: RunBody, session: str | None = Cookie(default=None)):
     img_cache = {}
 
     def worker(u):
+        # O'lik akkauntni o'tkazib yuboramiz (oxirgi tekshiruvda o'lik bo'lsa) — tezroq.
+        if instagram_client.is_dead(u):
+            raise RuntimeError("o'lik (tekshiruvda) — o'tkazib yuborildi")
+        # Takror komment himoyasi — bir akkaunt bir postga 2 marta yozmaydi.
+        if history.already_commented(media_id, u):
+            raise RuntimeError("allaqachon komment yozilgan")
         persona = instagram_client.get_personality(u)
         if caption:
             text = ai_client.generate_one(caption, persona, provider)
@@ -616,7 +659,7 @@ def run(body: RunBody, session: str | None = Cookie(default=None)):
             raise RuntimeError("Postda matn ham, rasm ham yo'q")
         instagram_client.post_comment(media_id, text, u)
         history.add(media_id, persona, text, body.url, u)
-        if body.like:
+        if body.like and not history.already_liked(media_id, u):
             try:
                 instagram_client.like_media(media_id, u)
                 history.add(media_id, "like", "❤️ like", body.url, u)

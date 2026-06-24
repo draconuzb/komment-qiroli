@@ -36,3 +36,20 @@ def add(media_id: str, style: str, text: str, url: str = "", username: str = "")
 
 def recent(limit: int = 30) -> list[dict]:
     return _load()[:limit]
+
+
+def already_commented(media_id: str, username: str) -> bool:
+    """Shu akkaunt shu media'ga avval komment yozganmi (like/view emas)."""
+    for it in _load():
+        if it.get("media_id") == media_id and it.get("username") == username \
+                and it.get("style") not in ("like", "view"):
+            return True
+    return False
+
+
+def already_liked(media_id: str, username: str) -> bool:
+    for it in _load():
+        if it.get("media_id") == media_id and it.get("username") == username \
+                and it.get("style") == "like":
+            return True
+    return False

@@ -43,6 +43,7 @@ _ACCOUNTS_FILE = os.path.join(config.DATA_DIR, "accounts.json")
 _COUNTER_FILE = os.path.join(config.DATA_DIR, "daily_counter.json")
 _PROXIES_FILE = os.path.join(config.DATA_DIR, "proxies.json")
 _PERSONAS_FILE = os.path.join(config.DATA_DIR, "personalities.json")
+_HEALTH_FILE = os.path.join(config.DATA_DIR, "health.json")
 
 _clients: dict[str, Client] = {}      # username -> tirik Client (kesh)
 _last_ts: dict[str, float] = {}       # username -> oxirgi komment vaqti
@@ -122,6 +123,67 @@ def set_personality(username: str, personality: str) -> None:
     data = _load_personas()
     data[username] = personality
     _save_personas(data)
+
+
+# ---------- Akkaunt sog'ligi (tirik/o'lik) ----------
+
+def _load_health() -> dict:
+    if os.path.exists(_HEALTH_FILE):
+        try:
+            with open(_HEALTH_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _set_health(username: str, alive: bool) -> None:
+    data = _load_health()
+    data[username] = {"alive": alive, "checked_at": int(time.time())}
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    with open(_HEALTH_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+
+def get_health(username: str) -> dict:
+    return _load_health().get(username, {"alive": None, "checked_at": 0})
+
+
+def is_dead(username: str) -> bool:
+    """Oxirgi tekshiruvda o'lik deb belgilanganmi (avto-runda o'tkazib yuborish uchun)."""
+    return _load_health().get(username, {}).get("alive") is False
+
+
+def check_account(username: str) -> bool:
+    """Sessiya tirikligini account_info orqali tekshiradi (tez, relogin'siz). Holatni saqlaydi."""
+    try:
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.account_info(), relogin=False), 20)
+        _set_health(username, True)
+        return True
+    except Exception:
+        _set_health(username, False)
+        return False
+
+
+def warmup(username: str) -> str:
+    """Yengil 'inson kabi' faollik (feed/reels ko'rish) — sessiya uzoqroq yashashiga yordam.
+    Best-effort: xatolar yutiladi. Akkaunt proxysi orqali o'tadi."""
+    def _do(cl):
+        steps = []
+        for fn, name in (
+            (lambda: cl.get_timeline_feed(), "feed"),
+            (lambda: cl.get_reels_tray_feed() if hasattr(cl, "get_reels_tray_feed") else None, "reels"),
+        ):
+            try:
+                fn()
+                steps.append(name)
+            except Exception:
+                pass
+            time.sleep(random.uniform(2, 5))
+        return steps
+    steps = _run_timeout(lambda: _with_session(username, _do, relogin=False), 35)
+    _set_health(username, True)  # ishladi => tirik
+    return ", ".join(steps) if steps else "—"
 
 
 def _sess_name(s: str) -> str:
@@ -459,6 +521,7 @@ def list_accounts() -> list[dict]:
             "daily_limit": limit,
             "proxy": proxy_display(get_proxy(u)),
             "personality": get_personality(u),
+            "health": get_health(u),
         }
         for u in _load_accounts()
     ]

@@ -141,8 +141,11 @@ function renderAccounts(accounts) {
     const opts = Object.entries(PERSONAS).map(
       ([k, v]) => `<option value="${k}"${k === persona ? " selected" : ""}>${v}</option>`
     ).join("");
+    const hp = a.health || {};
+    const hcls = hp.alive === true ? "alive" : hp.alive === false ? "dead" : "unknown";
+    const htitle = hp.alive === true ? "Tirik ✓" : hp.alive === false ? "O'lik — qayta ulang" : "Tekshirilmagan";
     row.innerHTML = `
-      <span class="acc-name" title="@${a.username}"><span class="dot"></span>@${a.username}</span>
+      <span class="acc-name" title="@${a.username}"><span class="dot dot--${hcls}" title="${htitle}"></span>@${a.username}</span>
       <select class="persona-sel" title="Akkaunt xususiyati — shunga mos komment yoziladi">${opts}</select>
       <span class="acc-usage" title="Bugun: ${a.daily_count}/${a.daily_limit}">
         <i class="usage-bar"><b style="width:${(pct * 100).toFixed(0)}%"></b></i>${a.daily_count}/${a.daily_limit}
@@ -338,6 +341,39 @@ async function doSetPersonality(username, personality) {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
   }
+}
+
+async function doCheckAll() {
+  const btn = $("check-all-btn");
+  setLoading(btn, true);
+  try {
+    const start = await api("/api/accounts/check", { method: "POST", body: JSON.stringify({}) });
+    toast(`Tekshiruv: ${start.total} akkaunt...`, "info");
+    const res = await pollJob(start.job_id, "Tekshiruv");
+    if (res) {
+      const alive = res.results.filter((r) => r.ok).length;
+      state.accounts = res.accounts; refreshAccountsUI();
+      toast(`🟢 ${alive} tirik · 🔴 ${res.total - alive} o'lik`, alive ? "ok" : "err");
+    }
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
+}
+
+async function doWarmupAll() {
+  const btn = $("warmup-all-btn");
+  if (!confirm("Akkauntlarni 'isitish' (yengil feed ko'rish) — sessiya uzoq yashashiga yordam. Davom etamizmi?")) return;
+  setLoading(btn, true);
+  try {
+    const start = await api("/api/accounts/warmup", { method: "POST", body: JSON.stringify({}) });
+    toast(`Isitish: ${start.total} akkaunt...`, "info");
+    const res = await pollJob(start.job_id, "Isitish");
+    if (res) { state.accounts = res.accounts; refreshAccountsUI(); reportResults(res, "Isitish"); }
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  } finally { setLoading(btn, false); }
 }
 
 // AVTO: link uchun har akkaunt o'z xususiyatiga mos komment yozadi + like bosadi
@@ -824,6 +860,8 @@ $("modems-config-btn").onclick = (e) => doGenConfig(e.currentTarget);
 $("modems-assign-btn").onclick = (e) => doAssignAll(e.currentTarget);
 $("generate-btn").onclick = doGenerate;
 $("auto-btn").onclick = doAutoRun;
+$("check-all-btn").onclick = doCheckAll;
+$("warmup-all-btn").onclick = doWarmupAll;
 $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));
 $("story-btn").onclick = () => doStory($("story-btn"));
