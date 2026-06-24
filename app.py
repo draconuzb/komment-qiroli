@@ -7,6 +7,7 @@ yoki:
 """
 import re
 import secrets
+import threading
 import time
 from pathlib import Path
 
@@ -495,27 +496,59 @@ class PostBody(BaseModel):
     usernames: list[str]
 
 
+# Fon (background) job tizimi — like/comment ketma-ket + kechikishlar bilan bajariladi
+# (ban himoyasi). Sinxron qilsak ko'p akkaunt + kechikish = 504. Shu sabab fonда ishlaydi,
+# panel esa /api/job/{id} dan holatni so'rab turadi.
+_JOBS: dict[str, dict] = {}
+_JOBS_MAX = 50
+
+
+def _start_job(label: str, usernames: list[str], worker) -> str:
+    jid = secrets.token_urlsafe(8)
+    job = {"label": label, "total": len(usernames), "done": 0, "results": [], "finished": False}
+    _JOBS[jid] = job
+    # eski joblarni tozalab turamiz
+    if len(_JOBS) > _JOBS_MAX:
+        for old in list(_JOBS)[:-_JOBS_MAX]:
+            _JOBS.pop(old, None)
+
+    def run():
+        for u in usernames:
+            try:
+                worker(u)
+                job["results"].append({"username": u, "ok": True})
+            except Exception as e:
+                job["results"].append({"username": u, "ok": False, "error": str(e)})
+            job["done"] += 1
+        job["finished"] = True
+
+    threading.Thread(target=run, daemon=True).start()
+    return jid
+
+
+@app.get("/api/job/{jid}")
+def get_job(jid: str, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    job = _JOBS.get(jid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job topilmadi (eskirgan bo'lishi mumkin)")
+    return {**job, "accounts": instagram_client.list_accounts()}
+
+
 @app.post("/api/post")
 def post(body: PostBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
-
     if not body.media_id:
         raise HTTPException(status_code=400, detail="media_id yo'q — avtomatik joylab bo'lmaydi")
     if not body.usernames:
         raise HTTPException(status_code=400, detail="Kamida bitta akkaunt tanlang")
 
-    results = []
-    for username in body.usernames:
-        try:
-            instagram_client.post_comment(body.media_id, body.text, username)
-            history.add(body.media_id, body.style, body.text, body.url, username)
-            results.append({"username": username, "ok": True})
-        except (RateLimitError, NotLoggedInError) as e:
-            results.append({"username": username, "ok": False, "error": str(e)})
-        except Exception as e:
-            results.append({"username": username, "ok": False, "error": str(e)})
+    def worker(u):
+        instagram_client.post_comment(body.media_id, body.text, u)
+        history.add(body.media_id, body.style, body.text, body.url, u)
 
-    return {"results": results, "accounts": instagram_client.list_accounts()}
+    jid = _start_job("Komment", body.usernames, worker)
+    return {"job_id": jid, "total": len(body.usernames)}
 
 
 # ---------- Like ----------
@@ -534,17 +567,12 @@ def like(body: ActionBody, session: str | None = Cookie(default=None)):
     if not body.usernames:
         raise HTTPException(status_code=400, detail="Kamida bitta akkaunt tanlang")
 
-    results = []
-    for username in body.usernames:
-        try:
-            instagram_client.like_media(body.media_id, username)
-            history.add(body.media_id, "like", "❤️ like", body.url, username)
-            results.append({"username": username, "ok": True})
-        except (RateLimitError, NotLoggedInError) as e:
-            results.append({"username": username, "ok": False, "error": str(e)})
-        except Exception as e:
-            results.append({"username": username, "ok": False, "error": str(e)})
-    return {"results": results, "accounts": instagram_client.list_accounts()}
+    def worker(u):
+        instagram_client.like_media(body.media_id, u)
+        history.add(body.media_id, "like", "❤️ like", body.url, u)
+
+    jid = _start_job("Like", body.usernames, worker)
+    return {"job_id": jid, "total": len(body.usernames)}
 
 
 # ---------- Ko'rish (view) ----------
@@ -557,17 +585,12 @@ def view(body: ActionBody, session: str | None = Cookie(default=None)):
     if not body.usernames:
         raise HTTPException(status_code=400, detail="Kamida bitta akkaunt tanlang")
 
-    results = []
-    for username in body.usernames:
-        try:
-            instagram_client.view_media(body.media_id, username)
-            history.add(body.media_id, "view", "👁 view", body.url, username)
-            results.append({"username": username, "ok": True})
-        except (RateLimitError, NotLoggedInError) as e:
-            results.append({"username": username, "ok": False, "error": str(e)})
-        except Exception as e:
-            results.append({"username": username, "ok": False, "error": str(e)})
-    return {"results": results, "accounts": instagram_client.list_accounts()}
+    def worker(u):
+        instagram_client.view_media(body.media_id, u)
+        history.add(body.media_id, "view", "👁 view", body.url, u)
+
+    jid = _start_job("Ko'rish", body.usernames, worker)
+    return {"job_id": jid, "total": len(body.usernames)}
 
 
 # ---------- Repost ----------

@@ -622,7 +622,10 @@ def post_comment(media_id: str, text: str, username: str) -> None:
         raise RateLimitError(f"@{username}: kunlik limit ({daily_limit}) tugadi.")
 
     time.sleep(random.uniform(delay_min, delay_max))
-    _with_session(username, lambda cl: cl.media_comment(media_id, text))
+    try:
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_comment(media_id, text)), 22)
+    except _cf.TimeoutError:
+        raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
     _last_ts[username] = time.time()
     _increment_daily(username)
 
@@ -632,7 +635,10 @@ def post_comment(media_id: str, text: str, username: str) -> None:
 def like_media(media_id: str, username: str) -> None:
     """Bitta akkauntdan postga like bosadi (yengil amal, kichik kechikish bilan)."""
     time.sleep(random.uniform(2, 6))
-    _with_session(username, lambda cl: cl.media_like(media_id))
+    try:
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_like(media_id)), 18)
+    except _cf.TimeoutError:
+        raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
 
 
 # ---------- Ko'rish (view / seen) ----------
@@ -644,7 +650,10 @@ def view_media(media_id: str, username: str) -> None:
     (ommaviy view soni oshishiga kafolat yo'q).
     """
     time.sleep(random.uniform(2, 6))
-    _with_session(username, lambda cl: cl.media_seen([media_id]))
+    try:
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_seen([media_id])), 18)
+    except _cf.TimeoutError:
+        raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin).")
 
 
 # ---------- Repost (yuklab olib qayta joylash) ----------

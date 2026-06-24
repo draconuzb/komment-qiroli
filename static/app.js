@@ -498,15 +498,30 @@ function renderResults(data) {
 }
 
 // ---------- Post ----------
+// Fon-job holatini so'rab turadi (504 bo'lmasin — amal fonда ketma-ket bajariladi).
+async function pollJob(jobId, label) {
+  while (true) {
+    let j;
+    try { j = await api(`/api/job/${jobId}`); }
+    catch (e) { if (e.status === 401) { location.reload(); return null; } throw e; }
+    if (j.finished) return j;
+    toast(`${label}: ${j.done}/${j.total} bajarildi...`, "info");
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+}
+
 async function doPost(style, text, btn) {
   const usernames = selectedUsernames();
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
   setLoading(btn, true);
   try {
-    const res = await api("/api/post", {
+    const start = await api("/api/post", {
       method: "POST",
       body: JSON.stringify({ media_id: state.mediaId, style, text, url: state.url, usernames }),
     });
+    toast(`Komment: ${start.total} akkaunt navbatda (fon rejimi)...`, "info");
+    const res = await pollJob(start.job_id, "Komment");
+    if (!res) return;
     const ok = res.results.filter((r) => r.ok);
     const fail = res.results.filter((r) => !r.ok);
     state.accounts = res.accounts;
@@ -550,11 +565,13 @@ async function doView(btn) {
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
   setLoading(btn, true);
   try {
-    const res = await api("/api/view", {
+    const start = await api("/api/view", {
       method: "POST",
       body: JSON.stringify({ media_id: state.mediaId, url: state.url, usernames }),
     });
-    reportResults(res, "Ko'rish");
+    toast(`Ko'rish: ${start.total} akkaunt navbatda...`, "info");
+    const res = await pollJob(start.job_id, "Ko'rish");
+    if (res) reportResults(res, "Ko'rish");
   } catch (e) {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
@@ -566,11 +583,13 @@ async function doLike(btn) {
   if (!usernames.length) { toast("Kamida bitta akkaunt belgilang", "err"); return; }
   setLoading(btn, true);
   try {
-    const res = await api("/api/like", {
+    const start = await api("/api/like", {
       method: "POST",
       body: JSON.stringify({ media_id: state.mediaId, url: state.url, usernames }),
     });
-    reportResults(res, "Like");
+    toast(`Like: ${start.total} akkaunt navbatda...`, "info");
+    const res = await pollJob(start.job_id, "Like");
+    if (res) reportResults(res, "Like");
   } catch (e) {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
