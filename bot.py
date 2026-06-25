@@ -80,41 +80,25 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text("\n".join(lines[:60]))
 
 
-async def _run_auto(bot, chat_id: int, url: str, reply_to: int | None = None) -> None:
-    """Havolani GLOBAL NAVBATga qo'shadi (web-app HTTP orqali). Kommentlar vaqtga
-    taqsimlab, >=3 daq oraliq, bitta-bitta joylanadi — hech qachon 2 tasi urishmaydi."""
-    loop = asyncio.get_event_loop()
-
-    def _enqueue():
-        r = requests.post(
-            f"{_INTERNAL_URL}/api/hook/run",
-            headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
-            json={"url": url},
-            timeout=90,
-        )
-        r.raise_for_status()
-        return r.json()
-
-    try:
-        res = await loop.run_in_executor(None, _enqueue)
-    except Exception as e:
-        await bot.send_message(
-            chat_id=chat_id, text=f"❌ Navbatga qo'shib bo'lmadi: {str(e)[:150]}",
-            reply_to_message_id=reply_to,
-        )
-        return
-
-    q = res.get("queued", 0)
-    last_at = res.get("last_at", 0)
-    eta = datetime.datetime.fromtimestamp(last_at).strftime("%m-%d %H:%M") if last_at else "?"
-    await bot.send_message(
-        chat_id=chat_id,
-        text=(f"✅ {q} akkaunt navbatga qo'shildi.\n"
-              f"Kommentlar vaqtga taqsimlab, ≥3 daqiqa oraliq bilan birma-bir joylanadi "
-              f"(bloklanmaslik uchun).\nOxirgisi taxminan: {eta}\n\n"
-              f"Holatni panel → Navbat bo'limidan ko'rasiz."),
-        reply_to_message_id=reply_to,
+def _enqueue_via_app(url: str, source: str) -> dict:
+    """Havolani web-app orqali GLOBAL NAVBATga qo'shadi (manba bilan). Sinxron (executor'da)."""
+    r = requests.post(
+        f"{_INTERNAL_URL}/api/hook/run",
+        headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
+        json={"url": url, "source": source},
+        timeout=90,
     )
+    r.raise_for_status()
+    return r.json()
+
+
+def _channel_allowed(post) -> bool:
+    srcs = config.TELEGRAM_SOURCE_CHANNELS
+    if not srcs:
+        return True  # ro'yxat bo'sh — har qanday admin kanal
+    cid = str(post.chat.id)
+    uname = post.chat.username or ""
+    return cid in srcs or uname in srcs or ("@" + uname) in srcs
 
 
 async def on_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,21 +109,38 @@ async def on_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not m:
         await update.message.reply_text("Instagram havolasini yuboring.")
         return
-    await _run_auto(context.bot, update.effective_chat.id, m.group(0), reply_to=update.message.message_id)
+    loop = asyncio.get_event_loop()
+    try:
+        res = await loop.run_in_executor(None, lambda: _enqueue_via_app(m.group(0), "DM"))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Navbatga qo'shib bo'lmadi: {str(e)[:150]}")
+        return
+    q = res.get("queued", 0)
+    last_at = res.get("last_at", 0)
+    eta = datetime.datetime.fromtimestamp(last_at).strftime("%m-%d %H:%M") if last_at else "?"
+    await update.message.reply_text(
+        f"✅ {q} akkaunt navbatga qo'shildi. Oxirgisi ~{eta}.\n"
+        f"Natijani LOG kanaldan kuzating."
+    )
 
 
 async def on_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     post = update.channel_post
-    if not post or not post.text:
+    if not post:
         return
-    want = (config.TELEGRAM_CHANNEL_ID or "").lstrip("@")
-    if want:
-        if str(post.chat.id) != want and (post.chat.username or "") != want:
-            return
-    m = _IG_URL_RE.search(post.text)
+    text = post.text or post.caption or ""   # turli format: matn yoki caption
+    if not text or not _channel_allowed(post):
+        return
+    m = _IG_URL_RE.search(text)
     if not m:
         return
-    await _run_auto(context.bot, post.chat.id, m.group(0), reply_to=post.message_id)
+    source = post.chat.title or str(post.chat.id)
+    loop = asyncio.get_event_loop()
+    try:
+        # Manba kanalni iflos qilmaymiz — hisobot LOG kanalga (queue_mgr orqali) ketadi.
+        await loop.run_in_executor(None, lambda: _enqueue_via_app(m.group(0), source))
+    except Exception as e:
+        logger.warning("enqueue xato (%s): %s", source, e)
 
 
 def main() -> None:

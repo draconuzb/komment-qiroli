@@ -30,6 +30,15 @@ ALLOWED_TELEGRAM_IDS = {
 # Avtomatlashtirish kanali (bot admin bo'lishi shart). @username yoki -100... ID.
 # Bo'sh bo'lsa — bot admin bo'lgan har qanday kanaldagi havolaga ishlaydi.
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "")
+# Manba kanallar (vergul bilan, -100... ID lar). Bulardan IG linklar olinadi.
+# Eski TELEGRAM_CHANNEL_ID ham avtomatik qo'shiladi.
+TELEGRAM_SOURCE_CHANNELS = {
+    x.strip()
+    for x in (os.getenv("TELEGRAM_SOURCE_CHANNELS", "") + "," + TELEGRAM_CHANNEL_ID).split(",")
+    if x.strip()
+}
+# Log kanal — bot bajarilgan ishlar haqida shu yerga hisobot yozadi (bot admin bo'lsin).
+TELEGRAM_LOG_CHANNEL = os.getenv("TELEGRAM_LOG_CHANNEL", "")
 
 # AI provayderlar (kamida bittasi to'ldirilgan bo'lsin)
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

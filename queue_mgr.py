@@ -8,6 +8,7 @@
 - Worker FAQAT web (uvicorn) jarayonida ishlaydi. Bot/webhook/panel — hammasi shu
   bitta navbatga vazifa qo'shadi (enqueue).
 """
+import datetime
 import json
 import os
 import random
@@ -15,11 +16,29 @@ import secrets
 import threading
 import time
 
+import requests
+
 import config
 import settings
 import instagram_client
 import ai_client
 import history
+
+
+def _tg_log(text: str) -> None:
+    """Log kanalga xabar yuboradi (Telegram HTTP API, best-effort)."""
+    token = config.TELEGRAM_BOT_TOKEN
+    chat = config.TELEGRAM_LOG_CHANNEL
+    if not token or not chat:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat, "text": text[:4000], "disable_web_page_preview": True},
+            timeout=15,
+        )
+    except Exception:
+        pass
 
 _FILE = os.path.join(config.DATA_DIR, "queue.json")
 _lock = threading.RLock()
@@ -54,14 +73,20 @@ def _save(d: dict) -> None:
 
 # ---------- Navbatga qo'shish (B rejimi: oynaga taqsimlash) ----------
 
-def enqueue(url: str, media_id: str, usernames: list[str], like: bool = True) -> dict:
+def enqueue(url: str, media_id: str, usernames: list[str], like: bool = True,
+            source: str = "") -> dict:
     """Akkauntlarni oynaga tasodifiy, >=gap_min oraliq bilan rejalashtiradi.
-    Qaytaradi: {queued, first_at, last_at}."""
+    source — qaysi manba kanaldan kelgani (log uchun). Qaytaradi: {queued, first_at, last_at}."""
     gap_min = int(settings.get("schedule_gap_min") or 180)
     window = int(settings.get("schedule_window") or 172800)
+    # Takror himoyasi: shu media'ga ALLAQACHON komment yozgan akkauntlarni qo'shmaymiz.
+    if media_id:
+        usernames = [u for u in usernames if not history.already_commented(media_id, u)]
     if not usernames:
+        _tg_log(f"📥 [{source or 'panel'}] link — barcha akkaunt allaqachon yozgan, o'tkazildi.\n{url}")
         return {"queued": 0, "first_at": 0, "last_at": 0}
 
+    batch_id = secrets.token_urlsafe(6)
     with _lock:
         d = _load()
         now = time.time()
@@ -83,9 +108,14 @@ def enqueue(url: str, media_id: str, usernames: list[str], like: bool = True) ->
                 "url": url, "media_id": media_id or "", "username": u,
                 "like": bool(like), "run_at": rt, "status": "pending",
                 "error": "", "created_at": now,
+                "source": source or "panel", "batch_id": batch_id,
             })
         _save(d)
-        return {"queued": len(usernames), "first_at": times[0], "last_at": times[-1]}
+
+    eta = datetime.datetime.fromtimestamp(times[-1]).strftime("%m-%d %H:%M")
+    _tg_log(f"📥 [{source or 'panel'}] yangi link → {len(usernames)} akkaunt navbatga.\n"
+            f"Oxirgisi ~{eta}\n{url}")
+    return {"queued": len(usernames), "first_at": times[0], "last_at": times[-1]}
 
 
 def snapshot() -> dict:
@@ -180,6 +210,8 @@ def _worker() -> None:
                     task = pend[0]
             if task:
                 ok, err = _do_post(task)  # lock tashqarisida (sekin)
+                src = task.get("source", "panel")
+                batch_summary = None
                 with _lock:
                     d = _load()
                     for t in d["tasks"]:
@@ -188,6 +220,14 @@ def _worker() -> None:
                             t["error"] = err
                             break
                     d["last_post"] = time.time()
+                    # Batch tugadimi? (shu link bo'yicha boshqa pending qolmaganmi)
+                    bid = task.get("batch_id")
+                    if bid:
+                        bt = [t for t in d["tasks"] if t.get("batch_id") == bid]
+                        if not any(t["status"] == "pending" for t in bt):
+                            ok_n = sum(1 for t in bt if t["status"] == "done")
+                            fail_n = sum(1 for t in bt if t["status"] == "failed")
+                            batch_summary = (src, task["url"], ok_n, fail_n)
                     # eski yakunlanganlarni cheklash
                     finished = [t for t in d["tasks"] if t["status"] != "pending"]
                     if len(finished) > _DONE_KEEP:
@@ -195,6 +235,14 @@ def _worker() -> None:
                         d["tasks"] = [t for t in d["tasks"]
                                       if t["status"] == "pending" or t["id"] in keep_ids]
                     _save(d)
+                # Log (lock tashqarisida)
+                if ok:
+                    _tg_log(f"✅ @{task['username']} komment+like · [{src}]\n{task['url']}")
+                else:
+                    _tg_log(f"❌ @{task['username']}: {err[:80]} · [{src}]")
+                if batch_summary:
+                    s, u_, on, fn = batch_summary
+                    _tg_log(f"📊 [{s}] link tugadi: ✅ {on} komment · ❌ {fn} xato\n{u_}")
             time.sleep(20)
         except Exception:
             time.sleep(30)

@@ -397,7 +397,7 @@ def _download_image(url: str, max_bytes: int = 3_000_000) -> bytes:
     return data
 
 
-def _enqueue_link(url: str, usernames: list[str] | None, like: bool = True) -> dict:
+def _enqueue_link(url: str, usernames: list[str] | None, like: bool = True, source: str = "") -> dict:
     """Havola uchun har akkauntni global navbatga (vaqtga taqsimlangan) qo'shadi.
     Komment post vaqtida (worker'da) yaratiladi — bu yerда faqat media_id olinadi."""
     accounts = usernames or [a["username"] for a in instagram_client.list_accounts()]
@@ -409,7 +409,7 @@ def _enqueue_link(url: str, usernames: list[str] | None, like: bool = True) -> d
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
-    res = queue_mgr.enqueue(url, media_id, accounts, like=like)
+    res = queue_mgr.enqueue(url, media_id, accounts, like=like, source=source)
     return res
 
 
@@ -487,6 +487,7 @@ class HookBody(BaseModel):
     provider: str = ""            # bo'sh => birinchi mavjud AI
     style: str = "aqlli"          # yumor | aqlli | bahsli (AI komment uslubi)
     text: str = ""                # berilsa AI ishlatilmaydi, shu matn joylanadi
+    source: str = ""              # qaysi manba kanaldan (log uchun)
 
 
 def _check_webhook(token: str | None) -> None:
@@ -514,7 +515,7 @@ def hook_run(
     if not body.url:
         raise HTTPException(status_code=400, detail="url kerak")
     try:
-        res = _enqueue_link(body.url, body.accounts, like=True)
+        res = _enqueue_link(body.url, body.accounts, like=True, source=(body.source or "webhook"))
     except HTTPException:
         raise
     except Exception as e:
@@ -627,7 +628,7 @@ def run(body: RunBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
     if not body.url:
         raise HTTPException(status_code=400, detail="Havola (url) kerak")
-    res = _enqueue_link(body.url, body.usernames, like=body.like)
+    res = _enqueue_link(body.url, body.usernames, like=body.like, source="panel")
     return {"ok": True, **res}
 
 
