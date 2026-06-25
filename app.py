@@ -645,6 +645,14 @@ def clear_queue(session: str | None = Cookie(default=None)):
     return {"ok": True, "cleared": n, "queue": queue_mgr.snapshot()}
 
 
+@app.post("/api/hook/clear")
+def hook_clear(x_webhook_token: str | None = Header(default=None), token: str | None = None):
+    """Token bilan navbatni tozalash (bot uchun)."""
+    _check_webhook(x_webhook_token or token)
+    n = queue_mgr.clear_pending()
+    return {"ok": True, "cleared": n}
+
+
 # ---------- Like ----------
 
 class ActionBody(BaseModel):
