@@ -385,16 +385,44 @@ async function doAutoRun() {
   const btn = $("auto-btn");
   setLoading(btn, true);
   try {
-    const start = await api("/api/run", {
+    const r = await api("/api/run", {
       method: "POST", body: JSON.stringify({ url: m[0], provider, like: true }),
     });
-    toast(`Avto: ${start.total} akkaunt navbatda — har biriga xususiyatga mos komment + like...`, "info");
-    const res = await pollJob(start.job_id, "Avto");
-    if (res) reportResults(res, "Avto (komment+like)");
+    const eta = r.last_at ? new Date(r.last_at * 1000).toLocaleString() : "?";
+    toast(`✅ ${r.queued} akkaunt navbatga qo'shildi. Vaqtga taqsimlab (≥3 daq oraliq) joylanadi. Oxirgisi ~${eta}`, "ok");
+    loadQueue();
   } catch (e) {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
   } finally { setLoading(btn, false); }
+}
+
+// ---------- Navbat (global queue) ----------
+async function loadQueue() {
+  try {
+    const q = await api("/api/queue");
+    const el = $("queue-info");
+    if (!el) return;
+    if (q.pending === 0) {
+      el.innerHTML = `<span class="muted">Navbat bo'sh</span> · ✅ ${q.done} joylangan${q.failed ? " · ❌ " + q.failed : ""}`;
+    } else {
+      const mins = Math.round((q.next_in || 0) / 60);
+      const lastTxt = q.last_at ? new Date(q.last_at * 1000).toLocaleString() : "?";
+      el.innerHTML = `⏳ <b>${q.pending}</b> kutyapti · keyingisi ~${mins} daq · oxirgisi ${lastTxt} · ✅ ${q.done}${q.failed ? " · ❌ " + q.failed : ""}`;
+    }
+  } catch (_) {}
+}
+
+async function doClearQueue() {
+  if (!confirm("Navbatdagi (hali joylanmagan) kommentlarni bekor qilamizmi?")) return;
+  try {
+    const r = await api("/api/queue/clear", { method: "POST" });
+    toast(`${r.cleared} ta navbatdan o'chirildi`, "info");
+    loadQueue();
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  }
 }
 
 // ---------- Modemlar (o'z 4G IP pool) ----------
@@ -861,6 +889,8 @@ $("modems-config-btn").onclick = (e) => doGenConfig(e.currentTarget);
 $("modems-assign-btn").onclick = (e) => doAssignAll(e.currentTarget);
 $("generate-btn").onclick = doGenerate;
 $("auto-btn").onclick = doAutoRun;
+if ($("queue-refresh")) $("queue-refresh").onclick = loadQueue;
+if ($("queue-clear")) $("queue-clear").onclick = doClearQueue;
 $("check-all-btn").onclick = doCheckAll;
 $("warmup-all-btn").onclick = doWarmupAll;
 $("view-btn").onclick = () => doView($("view-btn"));
@@ -891,4 +921,4 @@ $("toggle-all").onclick = () => {
   boxes.forEach((b) => (b.checked = !allOn));
 };
 
-(async () => { const ok = await loadStatus(); if (ok) loadHistory(); })();
+(async () => { const ok = await loadStatus(); if (ok) { loadHistory(); loadQueue(); setInterval(loadQueue, 30000); } })();

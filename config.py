@@ -56,6 +56,11 @@ MAX_COMMENTS_PER_DAY = int(os.getenv("MAX_COMMENTS_PER_DAY", "30"))
 # minutli tanaffus (bloklanmaslik uchun: hammasi birdan emas, birma-bir yoziladi).
 ACCOUNT_GAP_MIN = int(os.getenv("ACCOUNT_GAP_MIN", "120"))   # 2 daqiqa
 ACCOUNT_GAP_MAX = int(os.getenv("ACCOUNT_GAP_MAX", "300"))   # 5 daqiqa
+# Global navbat (queue_mgr): kommentlar vaqtga taqsimlanadi (ban himoyasi).
+# gap_min — istalgan 2 komment orasidagi MINIMAL oraliq (butun tizim bo'ylab).
+# window — akkauntlar shu OYNA ichiga tasodifiy joylashtiriladi.
+SCHEDULE_GAP_MIN = int(os.getenv("SCHEDULE_GAP_MIN", "180"))      # 3 daqiqa
+SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "172800"))     # 2 kun
 
 # Web-panel
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.

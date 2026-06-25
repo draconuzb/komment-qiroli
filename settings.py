@@ -27,6 +27,8 @@ _DEFAULTS = {
     "max_comments_per_day": config.MAX_COMMENTS_PER_DAY,
     "account_gap_min": config.ACCOUNT_GAP_MIN,
     "account_gap_max": config.ACCOUNT_GAP_MAX,
+    "schedule_gap_min": config.SCHEDULE_GAP_MIN,
+    "schedule_window": config.SCHEDULE_WINDOW,
     "panel_password": config.PANEL_PASSWORD,
 }
 

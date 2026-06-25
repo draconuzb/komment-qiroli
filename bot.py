@@ -9,7 +9,9 @@ Bot admin bo'lishi shart (kanal postlarini o'qishi uchun). TELEGRAM_CHANNEL_ID
 berilsa — faqat o'sha kanal; bo'sh bo'lsa — bot admin bo'lgan har qanday kanal.
 """
 import asyncio
+import datetime
 import logging
+import os
 import re
 
 import requests
@@ -33,6 +35,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _IG_URL_RE = re.compile(r"https?://(www\.)?instagram\.com/\S+")
+# Web-app (uvicorn) shu konteyner ichida — navbatga qo'shishni HTTP orqali qilamiz
+# (navbat faylini faqat bitta jarayon yozsin).
+_INTERNAL_URL = f"http://127.0.0.1:{os.getenv('PORT', '8000')}"
 
 
 def _authorized(update: Update) -> bool:
@@ -76,72 +81,40 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def _run_auto(bot, chat_id: int, url: str, reply_to: int | None = None) -> None:
-    """Bitta havola uchun barcha akkauntlardan avto komment + like; holat tahrirlanib boriladi."""
+    """Havolani GLOBAL NAVBATga qo'shadi (web-app HTTP orqali). Kommentlar vaqtga
+    taqsimlab, >=3 daq oraliq, bitta-bitta joylanadi — hech qachon 2 tasi urishmaydi."""
     loop = asyncio.get_event_loop()
-    status = await bot.send_message(
-        chat_id=chat_id, text="⏳ Avto-komment boshlandi...", reply_to_message_id=reply_to
-    )
-    sid = status.message_id
 
-    async def upd(text: str):
-        try:
-            await bot.edit_message_text(text=text[:4000], chat_id=chat_id, message_id=sid)
-        except Exception:
-            pass
+    def _enqueue():
+        r = requests.post(
+            f"{_INTERNAL_URL}/api/hook/run",
+            headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
+            json={"url": url},
+            timeout=90,
+        )
+        r.raise_for_status()
+        return r.json()
 
     try:
-        media_id, caption, thumb = await loop.run_in_executor(None, instagram_client.fetch_media, url)
+        res = await loop.run_in_executor(None, _enqueue)
     except Exception as e:
-        await upd(f"❌ Postni o'qib bo'lmadi: {str(e)[:150]}")
-        return
-    if not media_id:
-        await upd("❌ media_id topilmadi — bu postga avtomatik joylab bo'lmaydi.")
-        return
-
-    accounts = [a["username"] for a in instagram_client.list_accounts()]
-    if not accounts:
-        await upd("❌ Hech qanday akkaunt ulanmagan.")
+        await bot.send_message(
+            chat_id=chat_id, text=f"❌ Navbatga qo'shib bo'lmadi: {str(e)[:150]}",
+            reply_to_message_id=reply_to,
+        )
         return
 
-    prov = _provider()
-    img = None
-    ok = fail = 0
-    lines: list[str] = []
-
-    for u in accounts:
-        try:
-            persona = instagram_client.get_personality(u)
-            if caption:
-                text = await loop.run_in_executor(None, ai_client.generate_one, caption, persona, prov)
-            elif thumb:
-                if img is None:
-                    img = await loop.run_in_executor(
-                        None, lambda: requests.get(thumb, timeout=15).content
-                    )
-                text = await loop.run_in_executor(None, ai_client.generate_one_from_image, img, persona)
-            else:
-                raise RuntimeError("post matni ham, rasm ham yo'q")
-
-            await loop.run_in_executor(None, instagram_client.post_comment, media_id, text, u)
-            history.add(media_id, persona, text, url, u)
-
-            liked = ""
-            try:
-                await loop.run_in_executor(None, instagram_client.like_media, media_id, u)
-                history.add(media_id, "like", "❤️ like", url, u)
-                liked = " +❤️"
-            except Exception:
-                pass
-
-            ok += 1
-            lines.append(f"✅ @{u} ({persona}){liked}")
-        except Exception as e:
-            fail += 1
-            lines.append(f"❌ @{u}: {str(e)[:45]}")
-
-        await upd(f"⏳ {ok + fail}/{len(accounts)} ...\n" + "\n".join(lines[-12:]))
-
-    await upd(f"✅ Tugadi: {ok} komment, {fail} xato\n\n" + "\n".join(lines[-25:]))
+    q = res.get("queued", 0)
+    last_at = res.get("last_at", 0)
+    eta = datetime.datetime.fromtimestamp(last_at).strftime("%m-%d %H:%M") if last_at else "?"
+    await bot.send_message(
+        chat_id=chat_id,
+        text=(f"✅ {q} akkaunt navbatga qo'shildi.\n"
+              f"Kommentlar vaqtga taqsimlab, ≥3 daqiqa oraliq bilan birma-bir joylanadi "
+              f"(bloklanmaslik uchun).\nOxirgisi taxminan: {eta}\n\n"
+              f"Holatni panel → Navbat bo'limidan ko'rasiz."),
+        reply_to_message_id=reply_to,
+    )
 
 
 async def on_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

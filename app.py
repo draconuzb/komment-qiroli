@@ -22,9 +22,16 @@ import settings
 import ai_client
 import instagram_client
 import history
+import queue_mgr
 from instagram_client import RateLimitError, NotLoggedInError
 
 app = FastAPI(title="Komment Qiroli")
+
+
+@app.on_event("startup")
+def _start_queue_worker():
+    # Global komment navbati ishlovchisi — FAQAT shu (web) jarayonida ishlaydi.
+    queue_mgr.start_worker()
 
 # Repost/Story vaqtincha o'chirilgan (proxy GB tejash uchun). Video yuklash ~20-30 MB,
 # komment/like esa ~1 MB. Yetarli proxy GB ulangach True qiling.
@@ -390,6 +397,22 @@ def _download_image(url: str, max_bytes: int = 3_000_000) -> bytes:
     return data
 
 
+def _enqueue_link(url: str, usernames: list[str] | None, like: bool = True) -> dict:
+    """Havola uchun har akkauntni global navbatga (vaqtga taqsimlangan) qo'shadi.
+    Komment post vaqtida (worker'da) yaratiladi — bu yerда faqat media_id olinadi."""
+    accounts = usernames or [a["username"] for a in instagram_client.list_accounts()]
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Hech qanday akkaunt ulanmagan")
+    try:
+        media_id, _caption, _thumb = _fetch_media_cached(url)
+    except NotLoggedInError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
+    res = queue_mgr.enqueue(url, media_id, accounts, like=like)
+    return res
+
+
 @app.post("/api/generate")
 def generate(body: GenerateBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
@@ -488,58 +511,15 @@ def hook_run(
         -d '{"url":"https://instagram.com/reel/XXX/","action":"comment","style":"aqlli"}'
     """
     _check_webhook(x_webhook_token or token)
-
-    action = (body.action or "comment").lower()
-    if action not in ("comment", "like", "both"):
-        raise HTTPException(status_code=400, detail="action: comment | like | both")
     if not body.url:
         raise HTTPException(status_code=400, detail="url kerak")
-
-    accounts = body.accounts or [a["username"] for a in instagram_client.list_accounts()]
-    if not accounts:
-        raise HTTPException(status_code=400, detail="Hech qanday akkaunt ulanmagan")
-
     try:
-        media_id, caption, thumb_url = _fetch_media_cached(body.url)
-    except NotLoggedInError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        res = _enqueue_link(body.url, body.accounts, like=True)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
-
-    # Komment matni: berilgan bo'lsa o'sha, aks holda AI yaratadi (caption yoki rasmdan).
-    comment_text = (body.text or "").strip()
-    used_ai = False
-    if action in ("comment", "both") and not comment_text:
-        provs = ai_client.available_providers()
-        provider = body.provider or (provs[0]["id"] if provs else "claude")
-        try:
-            if caption:
-                comments = ai_client.generate_comments(caption, provider)
-            elif thumb_url:
-                comments = ai_client.generate_comments_from_image(_download_image(thumb_url))
-            else:
-                raise HTTPException(status_code=422, detail="caption ham, rasm ham yo'q — `text` bering")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Komment yaratib bo'lmadi: {e}")
-        comment_text = comments.get(body.style) or next(iter(comments.values()), "")
-        used_ai = True
-
-    results = []
-    for u in accounts:
-        try:
-            if action in ("like", "both"):
-                instagram_client.like_media(media_id, u)
-                history.add(media_id, "like", "❤️ like", body.url, u)
-            if action in ("comment", "both"):
-                instagram_client.post_comment(media_id, comment_text, u)
-                history.add(media_id, body.style, comment_text, body.url, u)
-            results.append({"username": u, "ok": True})
-        except Exception as e:
-            results.append({"username": u, "ok": False, "error": str(e)})
-
-    return {"ok": True, "action": action, "comment": comment_text, "used_ai": used_ai, "results": results}
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"ok": True, **res}
 
 
 # ---------- Joylash (tanlangan akkauntlardan) ----------
@@ -642,57 +622,26 @@ class RunBody(BaseModel):
 
 @app.post("/api/run")
 def run(body: RunBody, session: str | None = Cookie(default=None)):
-    """Link uchun: har akkaunt o'z XUSUSIYATIga + caption'ga mos ALOHIDA komment
-    yaratadi, joylaydi va (like=True bo'lsa) avtomatik like bosadi — fon rejimida."""
+    """Link uchun: har akkaunt GLOBAL NAVBATga qo'shiladi — komment+like vaqtga
+    taqsimlangan holda (oyna ichida, >=3 daq oraliq, bitta-bitta) joylanadi."""
     _check_auth(session)
     if not body.url:
         raise HTTPException(status_code=400, detail="Havola (url) kerak")
-    accounts = body.usernames or [a["username"] for a in instagram_client.list_accounts()]
-    if not accounts:
-        raise HTTPException(status_code=400, detail="Kamida bitta akkaunt kerak")
+    res = _enqueue_link(body.url, body.usernames, like=body.like)
+    return {"ok": True, **res}
 
-    # Media bir marta o'qiladi (tez, og: meta).
-    try:
-        media_id, caption, thumb_url = _fetch_media_cached(body.url)
-    except NotLoggedInError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Postni o'qib bo'lmadi: {e}")
-    if not media_id:
-        raise HTTPException(status_code=422, detail="media_id topilmadi — bu postga avtomatik joylab bo'lmaydi")
 
-    provs = ai_client.available_providers()
-    provider = body.provider or (provs[0]["id"] if provs else "claude")
-    img_cache = {}
+@app.get("/api/queue")
+def get_queue(session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    return queue_mgr.snapshot()
 
-    def worker(u):
-        # O'lik akkauntni o'tkazib yuboramiz (oxirgi tekshiruvda o'lik bo'lsa) — tezroq.
-        if instagram_client.is_dead(u):
-            raise RuntimeError("o'lik (tekshiruvda) — o'tkazib yuborildi")
-        # Takror komment himoyasi — bir akkaunt bir postga 2 marta yozmaydi.
-        if history.already_commented(media_id, u):
-            raise RuntimeError("allaqachon komment yozilgan")
-        persona = instagram_client.get_personality(u)
-        if caption:
-            text = ai_client.generate_one(caption, persona, provider)
-        elif thumb_url:
-            if "img" not in img_cache:
-                img_cache["img"] = _download_image(thumb_url)
-            text = ai_client.generate_one_from_image(img_cache["img"], persona)
-        else:
-            raise RuntimeError("Postda matn ham, rasm ham yo'q")
-        instagram_client.post_comment(media_id, text, u)
-        history.add(media_id, persona, text, body.url, u)
-        if body.like and not history.already_liked(media_id, u):
-            try:
-                instagram_client.like_media(media_id, u)
-                history.add(media_id, "like", "❤️ like", body.url, u)
-            except Exception:
-                pass  # like ixtiyoriy — komment muhimroq
 
-    gap = (settings.get("account_gap_min"), settings.get("account_gap_max"))
-    jid = _start_job("Avto (komment+like)", accounts, worker, gap_range=gap)
-    return {"job_id": jid, "total": len(accounts)}
+@app.post("/api/queue/clear")
+def clear_queue(session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    n = queue_mgr.clear_pending()
+    return {"ok": True, "cleared": n, "queue": queue_mgr.snapshot()}
 
 
 # ---------- Like ----------

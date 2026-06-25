@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Komment Qiroli — Boshqaruv paneli</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260624e" />
+  <link rel="stylesheet" href="/static/style.css?v=20260625a" />
 </head>
 <body>
   <div class="bg-blobs" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -173,6 +173,19 @@
         </div>
       </section>
 
+      <!-- Navbat (global queue) -->
+      <section class="card reveal" style="--d:6">
+        <div class="card-head">
+          <h2>Navbat <span class="muted">(vaqtga taqsimlangan)</span></h2>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn--ghost btn--sm" id="queue-refresh">Yangilash</button>
+            <button class="btn btn--ghost btn--sm" id="queue-clear">Bekor qilish</button>
+          </div>
+        </div>
+        <p id="queue-info" class="muted">Yuklanmoqda...</p>
+        <p class="muted" style="font-size:12px;">Kommentlar oyna ichida, kamida 3 daqiqa oraliq bilan, bitta-bitta joylanadi — hech qachon 2 tasi birga ketmaydi (ban himoyasi).</p>
+      </section>
+
       <!-- Natijalar -->
       <section id="results" class="hidden">
         <div class="card desc-card">
@@ -283,6 +296,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=20260624e"></script>
+  <script src="/static/app.js?v=20260625a"></script>
 </body>
 </html>
