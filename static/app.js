@@ -894,7 +894,7 @@ $("auto-btn").onclick = doAutoRun;
 if ($("queue-refresh")) $("queue-refresh").onclick = loadQueue;
 if ($("queue-clear")) $("queue-clear").onclick = doClearQueue;
 $("check-all-btn").onclick = doCheckAll;
-$("warmup-all-btn").onclick = doWarmupAll;
+if ($("warmup-all-btn")) $("warmup-all-btn").onclick = doWarmupAll;  // warm-up olib tashlandi (ixtiyoriy)
 $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));
 $("story-btn").onclick = () => doStory($("story-btn"));
