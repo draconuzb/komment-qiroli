@@ -231,6 +231,8 @@ body {
 .acc-remove { font-size: 18px; }
 .acc-remove:hover { background: rgba(224,65,63,.12); color: var(--red); }
 .proxy-add { margin-top: 10px; }
+.proxy-check { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.proxy-check input { width: 16px; height: 16px; cursor: pointer; }
 
 /* ============ Forms / inputs ============ */
 textarea, .ig-connect input, #provider-select, .field input {

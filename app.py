@@ -140,13 +140,14 @@ def get_accounts(session: str | None = Cookie(default=None)):
 class AddAccountBody(BaseModel):
     sessionid: str
     proxy: str = ""
+    use_proxy: bool | None = None   # checkbox: True=proxy, False=mini-PC IP, None=default
 
 
 @app.post("/api/accounts")
 def add_account(body: AddAccountBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
     try:
-        username = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy)
+        username = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy, use_proxy=body.use_proxy)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
@@ -156,6 +157,7 @@ class LoginAccountBody(BaseModel):
     username: str
     password: str
     proxy: str = ""
+    use_proxy: bool | None = None   # checkbox: True=proxy, False=mini-PC IP, None=default
 
 
 @app.post("/api/accounts/login")
@@ -167,7 +169,7 @@ def account_login(body: LoginAccountBody, session: str | None = Cookie(default=N
     """
     _check_auth(session)
     try:
-        res = instagram_client.start_login(body.username, body.password, body.proxy)
+        res = instagram_client.start_login(body.username, body.password, body.proxy, use_proxy=body.use_proxy)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, **res, "accounts": instagram_client.list_accounts()}

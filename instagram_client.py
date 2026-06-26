@@ -203,7 +203,9 @@ def build_auto_proxy(token: str) -> str:
     http://USER:PASS_country-uz_session-<token>_lifetime-30m@host:port
     PROXY_AUTO o'chiq yoki creds bo'sh bo'lsa — bo'sh satr qaytaradi.
     """
-    if not (config.PROXY_AUTO and config.PROXY_HOST and config.PROXY_USER and config.PROXY_PASS):
+    # Creds bo'lsa quradi (PROXY_AUTO shart emas — chunki har akkaunt uchun checkbox bilan
+    # alohida tanlanadi; PROXY_AUTO faqat "berilmasa default" sifatida chaqiruvchida ishlatiladi).
+    if not (config.PROXY_HOST and config.PROXY_USER and config.PROXY_PASS):
         return ""
     pw = (
         f"{config.PROXY_PASS}_country-{config.PROXY_COUNTRY}"
@@ -334,19 +336,22 @@ def _save_accounts(usernames: list[str]) -> None:
 
 # ---------- Akkauntlarni boshqarish ----------
 
-def add_account_by_sessionid(sessionid: str, proxy: str = "") -> str:
+def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None) -> str:
     """Brauzerdan olingan sessionid orqali yangi akkaunt qo'shadi. Username qaytaradi.
 
-    proxy berilsa, login ham shu proxy orqali amalga oshiriladi (IP mosligi uchun muhim).
+    use_proxy: True — auto proxy (modem/IPRoyal); False — proxysiz (mini-PC IP);
+    None — config.PROXY_AUTO bo'yicha. proxy (matn) berilsa — o'sha ishlatiladi.
     """
     sessionid = sessionid.strip().strip('"')
     if not sessionid:
         raise ValueError("sessionid bo'sh")
 
     proxy = (proxy or "").strip()
-    auto = not proxy
+    manual = bool(proxy)
+    want_auto = use_proxy if use_proxy is not None else bool(config.PROXY_AUTO)
+    auto = (not manual) and want_auto
     if auto:
-        # Proxy berilmagan — avto. Login uchun vaqtinchalik UZ IP (username hali noma'lum).
+        # Avto proxy: login uchun vaqtinchalik UZ IP (username hali noma'lum).
         proxy = _bootstrap_proxy() or build_auto_proxy(
             hashlib.md5(sessionid.encode()).hexdigest()[:12]
         )
@@ -437,9 +442,10 @@ def _finalize_login(cl: Client, username_hint: str, proxy: str) -> str:
     return username
 
 
-def start_login(username: str, password: str, proxy: str = "") -> dict:
-    """Login+parol bilan kirishni boshlaydi. Hammasi akkaunt proxysi orqali o'tadi.
+def start_login(username: str, password: str, proxy: str = "", use_proxy=None) -> dict:
+    """Login+parol bilan kirishni boshlaydi.
 
+    use_proxy: True — auto proxy; False — proxysiz (mini-PC IP); None — PROXY_AUTO bo'yicha.
     Qaytaradi:
       {"status": "ok", "username": ...}   — muvaffaqiyatli kirdi (2FA o'chiq)
       {"status": "2fa", "token": ...}     — 2FA kodi kerak (finish_login_2fa chaqiring)
@@ -450,8 +456,9 @@ def start_login(username: str, password: str, proxy: str = "") -> dict:
         raise ValueError("Username va parol kerak")
 
     proxy = (proxy or "").strip()
-    if not proxy:
-        # Proxy berilmagan — avto: local modem pool yoki IPRoyal (rejimga qarab).
+    want_auto = use_proxy if use_proxy is not None else bool(config.PROXY_AUTO)
+    if not proxy and want_auto:
+        # Avto proxy: local modem pool yoki IPRoyal (rejimga qarab).
         proxy = auto_proxy_for(username)
 
     cl = _new_client()

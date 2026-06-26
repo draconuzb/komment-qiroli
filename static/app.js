@@ -220,10 +220,11 @@ async function doAddAccount() {
   const sid = $("sessionid-input").value.trim();
   if (!sid) { toast("sessionid kiriting", "err"); return; }
   const proxy = $("proxy-input").value.trim();
+  const use_proxy = $("sessionid-useproxy").checked;
   const btn = $("ig-add-btn");
   setLoading(btn, true);
   try {
-    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid, proxy }) });
+    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid, proxy, use_proxy }) });
     $("sessionid-input").value = "";
     $("proxy-input").value = "";
     toast("Akkaunt qo'shildi: @" + res.username, "ok");
@@ -243,11 +244,12 @@ async function doLoginAccount() {
   const password = $("iglogin-password").value;
   if (!username || !password) { toast("Username va parol kiriting", "err"); return; }
   const proxy = $("iglogin-proxy").value.trim();
+  const use_proxy = $("iglogin-useproxy").checked;
   const btn = $("ig-login-btn");
   setLoading(btn, true);
   try {
     const res = await api("/api/accounts/login", {
-      method: "POST", body: JSON.stringify({ username, password, proxy }),
+      method: "POST", body: JSON.stringify({ username, password, proxy, use_proxy }),
     });
     if (res.status === "2fa") {
       _pendingLoginToken = res.token;
