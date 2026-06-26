@@ -66,6 +66,18 @@ def _clear_queue() -> int:
         return -1
 
 
+def _accelerate_queue() -> int:
+    try:
+        r = requests.post(
+            f"{_INTERNAL_URL}/api/hook/accelerate",
+            headers={"X-Webhook-Token": config.WEBHOOK_TOKEN}, timeout=30,
+        )
+        r.raise_for_status()
+        return r.json().get("accelerated", 0)
+    except Exception:
+        return -1
+
+
 def _channel_allowed(post) -> bool:
     srcs = config.TELEGRAM_SOURCE_CHANNELS
     if not srcs:
@@ -102,8 +114,9 @@ def _main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Akkauntlar", callback_data="menu:status"),
          InlineKeyboardButton("📋 Navbat", callback_data="menu:queue")],
-        [InlineKeyboardButton("📡 Kanallar", callback_data="menu:sources"),
+        [InlineKeyboardButton("⚡ Hoziroq jo'natish", callback_data="menu:accel"),
          InlineKeyboardButton("🧹 Navbatni tozalash", callback_data="menu:clear")],
+        [InlineKeyboardButton("📡 Kanallar", callback_data="menu:sources")],
         [InlineKeyboardButton("🔄 Yangilash", callback_data="menu:home"),
          InlineKeyboardButton("ℹ️ Yordam", callback_data="menu:help")],
     ])
@@ -209,6 +222,16 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif data == "clear_yes":
             n = await asyncio.get_event_loop().run_in_executor(None, _clear_queue)
             msg = f"🧹 {n} ta navbatdan o'chirildi." if n >= 0 else "❌ Tozalab bo'lmadi."
+            await q.edit_message_text(msg, reply_markup=_back_menu())
+        elif data == "accel":
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Ha, jo'nat", callback_data="menu:accel_yes"),
+                InlineKeyboardButton("❌ Yo'q", callback_data="menu:home"),
+            ]])
+            await q.edit_message_text("⚡ Kutayotgan kommentlarni HOZIROQ (2-4 daqiqa oraliq) jo'natamizmi?", reply_markup=kb)
+        elif data == "accel_yes":
+            n = await asyncio.get_event_loop().run_in_executor(None, _accelerate_queue)
+            msg = f"⚡ {n} ta komment 2-4 daqiqa oraliq bilan jo'natiladi." if n >= 0 else "❌ Bo'lmadi."
             await q.edit_message_text(msg, reply_markup=_back_menu())
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz

@@ -150,6 +150,24 @@ def clear_pending() -> int:
         return before - len(d["tasks"])
 
 
+def accelerate(gap_min: float = 120, gap_max: float = 240) -> int:
+    """Kutayotgan vazifalarni HOZIRDAN boshlab, 2-4 daqiqa (gap_min..gap_max) oraliq
+    bilan qayta rejalashtiradi — '2 kun' oynani kutmasdan tezroq jo'natish uchun.
+    Tartib saqlanadi, hech qachon 2 tasi birga ketmaydi."""
+    with _lock:
+        d = _load()
+        pend = [t for t in d["tasks"] if t["status"] == "pending"]
+        pend.sort(key=lambda t: t["run_at"])
+        last = time.time()
+        for t in pend:
+            last += random.uniform(gap_min, gap_max)
+            t["run_at"] = last
+        _save(d)
+    if pend:
+        _tg_log(f"⚡ Tezlashtirildi: {len(pend)} ta komment 2-4 daqiqa oraliq bilan jo'natiladi.")
+    return len(pend)
+
+
 # ---------- Bajarish ----------
 
 def _do_post(task: dict) -> tuple[bool, str]:

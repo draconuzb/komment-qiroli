@@ -415,6 +415,18 @@ async function loadQueue() {
   } catch (_) {}
 }
 
+async function doAccelerate() {
+  if (!confirm("Kutayotgan kommentlarni HOZIROQ, 2-4 daqiqa oraliq bilan jo'natamizmi?")) return;
+  try {
+    const r = await api("/api/queue/accelerate", { method: "POST" });
+    toast(`⚡ ${r.accelerated} ta komment 2-4 daqiqa oraliq bilan jo'natiladi`, "ok");
+    loadQueue();
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  }
+}
+
 async function doClearQueue() {
   if (!confirm("Navbatdagi (hali joylanmagan) kommentlarni bekor qilamizmi?")) return;
   try {
@@ -893,6 +905,7 @@ $("generate-btn").onclick = doGenerate;
 $("auto-btn").onclick = doAutoRun;
 if ($("queue-refresh")) $("queue-refresh").onclick = loadQueue;
 if ($("queue-clear")) $("queue-clear").onclick = doClearQueue;
+if ($("queue-accel")) $("queue-accel").onclick = doAccelerate;
 $("check-all-btn").onclick = doCheckAll;
 if ($("warmup-all-btn")) $("warmup-all-btn").onclick = doWarmupAll;  // warm-up olib tashlandi (ixtiyoriy)
 $("view-btn").onclick = () => doView($("view-btn"));

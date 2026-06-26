@@ -655,6 +655,22 @@ def hook_clear(x_webhook_token: str | None = Header(default=None), token: str | 
     return {"ok": True, "cleared": n}
 
 
+@app.post("/api/queue/accelerate")
+def accelerate_queue(session: str | None = Cookie(default=None)):
+    """Kutayotgan kommentlarni hoziroq, 2-4 daqiqa oraliq bilan jo'natish."""
+    _check_auth(session)
+    n = queue_mgr.accelerate()
+    return {"ok": True, "accelerated": n, "queue": queue_mgr.snapshot()}
+
+
+@app.post("/api/hook/accelerate")
+def hook_accelerate(x_webhook_token: str | None = Header(default=None), token: str | None = None):
+    """Token bilan tezlashtirish (bot uchun)."""
+    _check_webhook(x_webhook_token or token)
+    n = queue_mgr.accelerate()
+    return {"ok": True, "accelerated": n}
+
+
 # ---------- Like ----------
 
 class ActionBody(BaseModel):
