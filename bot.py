@@ -260,20 +260,32 @@ async def on_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+def _extract_ig_url(post) -> str:
+    """Post matni, caption VA inline tugma (button) URL/matnlaridan IG havolani topadi."""
+    parts = [post.text or "", post.caption or ""]
+    rm = getattr(post, "reply_markup", None)
+    if rm and getattr(rm, "inline_keyboard", None):
+        for row in rm.inline_keyboard:
+            for btn in row:
+                if getattr(btn, "url", None):
+                    parts.append(btn.url)
+                if getattr(btn, "text", None):
+                    parts.append(btn.text)
+    m = _IG_URL_RE.search("\n".join(parts))
+    return m.group(0) if m else ""
+
+
 async def on_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     post = update.channel_post
-    if not post:
+    if not post or not _channel_allowed(post):
         return
-    text = post.text or post.caption or ""
-    if not text or not _channel_allowed(post):
-        return
-    m = _IG_URL_RE.search(text)
-    if not m:
+    url = _extract_ig_url(post)   # matn/caption/tugma — barchasidan qidiradi
+    if not url:
         return
     source = post.chat.title or str(post.chat.id)
     loop = asyncio.get_event_loop()
     try:
-        await loop.run_in_executor(None, lambda: _enqueue_via_app(m.group(0), source))
+        await loop.run_in_executor(None, lambda: _enqueue_via_app(url, source))
     except Exception as e:
         logger.warning("enqueue xato (%s): %s", source, e)
 
@@ -288,7 +300,7 @@ def main() -> None:
     app.add_handler(CommandHandler("queue", queue_cmd))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
-    app.add_handler(MessageHandler(filters.ChatType.CHANNEL & (filters.TEXT | filters.CAPTION), on_channel))
+    app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_dm))
     logger.info("Telegram bot ishga tushdi.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
