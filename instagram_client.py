@@ -486,79 +486,17 @@ def start_login(username: str, password: str, proxy: str = "", use_proxy=None) -
         return {"status": "2fa", "token": token}
     except Exception as e:
         msg = str(e) or e.__class__.__name__
-        # Challenge (email/SMS tekshiruvi) — yangi IP/qurilmadan kirilganda
         if isinstance(e, ChallengeRequired) or "challenge" in msg.lower():
-            return _start_challenge(cl, username, password, proxy)
+            # Instagram email/SMS tekshiruvini majburladi (yangi IP). Kod oqimini
+            # ishlatmaymiz (ovora) — foydalanuvchini sessionid+proxy usuliga yo'naltiramiz.
+            raise RuntimeError(
+                "Instagram tasdiqlash (email/SMS) so'radi. Login+parol o'rniga "
+                "sessionid (cookie) + proxy bilan qo'shing — login bo'lmaydi, kod so'ralmaydi."
+            )
         raise RuntimeError(f"Kirib bo'lmadi: {e}")
 
     name = _finalize_login(cl, username, proxy)
     return {"status": "ok", "username": name}
-
-
-def _start_challenge(cl: Client, username: str, password: str, proxy: str) -> dict:
-    """Instagram challenge (email/SMS kod) oqimini fon-threadda boshlaydi.
-    challenge_resolve bloklaydigan handler chaqiradi — foydalanuvchi kodni
-    finish_login_challenge orqali yuboradi."""
-    token = secrets.token_urlsafe(16)
-    ev = _threading.Event()
-    holder = {"code": ""}
-    pend = {
-        "cl": cl, "username": username, "password": password, "proxy": proxy,
-        "kind": "challenge", "event": ev, "holder": holder,
-        "done": False, "ok": False, "result": "", "error": "",
-    }
-    _pending_logins[token] = pend
-    last_json = getattr(cl, "last_json", {}) or {}
-
-    def _handler(user, choice):
-        if not ev.wait(timeout=300):
-            raise RuntimeError("Kod kiritilmadi (vaqt tugadi)")
-        return holder["code"]
-
-    def _run():
-        try:
-            cl.challenge_code_handler = _handler
-            cl.challenge_resolve(last_json)
-            pend["result"] = _finalize_login(cl, username, proxy)
-            pend["ok"] = True
-        except Exception as e:
-            pend["error"] = str(e) or e.__class__.__name__
-        finally:
-            pend["done"] = True
-
-    _threading.Thread(target=_run, daemon=True).start()
-    contact = ""
-    try:
-        sd = (last_json.get("challenge") or {}).get("step_data") or {}
-        contact = sd.get("contact_point") or sd.get("email") or sd.get("phone_number") or ""
-    except Exception:
-        pass
-    return {"status": "challenge", "token": token, "contact": contact}
-
-
-def finish_login_challenge(token: str, code: str) -> str:
-    """Challenge (email/SMS) kodi bilan loginni yakunlaydi. Username qaytaradi."""
-    pend = _pending_logins.get(token)
-    if not pend or pend.get("kind") != "challenge":
-        raise RuntimeError("Login sessiyasi topilmadi yoki eskirgan. Qaytadan urinib ko'ring.")
-    code = (code or "").strip().replace(" ", "")
-    if not code:
-        raise ValueError("Kod kerak")
-    pend["holder"]["code"] = code
-    pend["event"].set()
-    for _ in range(120):  # bg thread yakunini kutamiz (maks ~60s)
-        if pend.get("done"):
-            break
-        time.sleep(0.5)
-    if not pend.get("done"):
-        raise RuntimeError("Tekshiruv uzoq davom etdi. Qaytadan urinib ko'ring.")
-    ok = pend.get("ok")
-    result = pend.get("result")
-    err = pend.get("error")
-    _pending_logins.pop(token, None)
-    if ok:
-        return result
-    raise RuntimeError(f"Kod qabul qilinmadi: {err or 'nomaʼlum xato'}")
 
 
 def finish_login_2fa(token: str, code: str) -> str:

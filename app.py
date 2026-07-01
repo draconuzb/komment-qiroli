@@ -191,17 +191,6 @@ def account_login_2fa(body: Login2FABody, session: str | None = Cookie(default=N
     return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
 
 
-@app.post("/api/accounts/login/challenge")
-def account_login_challenge(body: Login2FABody, session: str | None = Cookie(default=None)):
-    """Challenge (email/SMS) kodi bilan loginni yakunlaydi."""
-    _check_auth(session)
-    try:
-        username = instagram_client.finish_login_challenge(body.token, body.code)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
-
-
 @app.delete("/api/accounts/{username}")
 def delete_account(username: str, session: str | None = Cookie(default=None)):
     _check_auth(session)
