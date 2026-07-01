@@ -238,6 +238,7 @@ async function doAddAccount() {
 
 // Plan B: login + parol bilan kirish (2FA bilan)
 let _pendingLoginToken = null;
+let _pendingLoginKind = null;   // "2fa" yoki "challenge"
 
 async function doLoginAccount() {
   const username = $("iglogin-username").value.trim();
@@ -253,9 +254,19 @@ async function doLoginAccount() {
     });
     if (res.status === "2fa") {
       _pendingLoginToken = res.token;
+      _pendingLoginKind = "2fa";
       $("twofa-row").style.display = "";
       $("iglogin-2fa").focus();
       toast("2FA kodi yuborildi — kodni kiriting", "info");
+      return;
+    }
+    if (res.status === "challenge") {
+      _pendingLoginToken = res.token;
+      _pendingLoginKind = "challenge";
+      $("twofa-row").style.display = "";
+      $("iglogin-2fa").focus();
+      const c = res.contact ? " (" + res.contact + ")" : "";
+      toast("Instagram tasdiqlash kodi yubordi" + c + " — email/SMS kodini kiriting", "info");
       return;
     }
     _finishAccountAdded(res, "@" + res.username + " kirdi");
@@ -267,18 +278,21 @@ async function doLoginAccount() {
 
 async function doVerify2FA() {
   const code = $("iglogin-2fa").value.trim();
-  if (!code) { toast("2FA kodini kiriting", "err"); return; }
+  if (!code) { toast("Kodni kiriting", "err"); return; }
   if (!_pendingLoginToken) { toast("Avval login qiling", "err"); return; }
+  const isChallenge = _pendingLoginKind === "challenge";
+  const url = isChallenge ? "/api/accounts/login/challenge" : "/api/accounts/login/2fa";
   const btn = $("ig-2fa-btn");
   setLoading(btn, true);
   try {
-    const res = await api("/api/accounts/login/2fa", {
+    const res = await api(url, {
       method: "POST", body: JSON.stringify({ token: _pendingLoginToken, code }),
     });
     _pendingLoginToken = null;
+    _pendingLoginKind = null;
     $("twofa-row").style.display = "none";
     $("iglogin-2fa").value = "";
-    _finishAccountAdded(res, "@" + res.username + " kirdi (2FA)");
+    _finishAccountAdded(res, "@" + res.username + " kirdi" + (isChallenge ? " (tasdiqlandi)" : " (2FA)"));
   } catch (e) {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
