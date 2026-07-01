@@ -6,6 +6,8 @@
 """
 import asyncio
 import datetime
+import io
+import json
 import logging
 import os
 import re
@@ -14,6 +16,7 @@ import requests
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputFile,
     KeyboardButton,
     ReplyKeyboardMarkup,
     Update,
@@ -129,9 +132,10 @@ _HELP = (
     "• 📡 Kanallar — manba va log kanallar.\n"
     "• 🧹 Tozalash — navbatdagi (hali joylanmagan) kommentlarni bekor qiladi.\n\n"
     "➕ Akkaunt qo'shish (proxy bilan, o'lmaydigan):\n"
-    "1) /proxy <username> — brauzer proxy sozlamalarini olasiz.\n"
-    "2) Brauzer (FoxyProxy)ga qo'yib, o'sha akkaunt bilan IG'ga kiring.\n"
-    "3) sessionid'ni oling → /add <username> <sessionid>\n\n"
+    "1) /foxyproxy user1 user2 ... — FoxyProxy import faylini olasiz (bir marta import).\n"
+    "2) 🦊 → akkaunt nomini tanlab yoqing → o'sha akkaunt bilan IG'ga kiring.\n"
+    "3) sessionid'ni oling → /add <username> <sessionid>\n"
+    "(yoki bitta akkaunt uchun: /proxy <username>)\n\n"
     "Kommentlar oyna ichida tasodifiy, ≥3 daqiqa oraliq bilan joylanadi."
 )
 
@@ -293,6 +297,60 @@ async def add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"❌ Qo'shib bo'lmadi: {str(e)[:250]}")
         return
     await update.message.reply_text(f"✅ @{name} qo'shildi — barqaror UZ proxy IP'da. Endi o'lmasligi kerak.")
+
+
+_FOXY_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#9B59B6", "#E67E22",
+                "#1ABC9C", "#F39C12", "#E84393", "#16A085", "#2980B9"]
+
+
+def _foxyproxy_file(usernames: list[str]) -> tuple[bytes, int]:
+    """FoxyProxy import faylini (settings JSON) yasaydi — har akkaunt nomi+rangi bilan."""
+    data = []
+    for i, u in enumerate(usernames):
+        p = instagram_client.proxy_parts_for(u)
+        if not p:
+            continue
+        data.append({
+            "active": True, "title": u, "type": "http",
+            "hostname": p["host"], "port": str(p["port"]),
+            "username": p["username"], "password": p["password"],
+            "cc": "", "city": "", "color": _FOXY_COLORS[i % len(_FOXY_COLORS)],
+            "pac": "", "pacString": "", "proxyDNS": True,
+            "include": [], "exclude": [], "tabProxy": [],
+        })
+    obj = {
+        "mode": "disable", "sync": False, "autoBackup": False, "passthrough": "",
+        "theme": "", "container": {},
+        "commands": {"setProxy": "", "setTabProxy": "", "includeHost": "", "excludeHost": ""},
+        "data": data,
+    }
+    return json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8"), len(data)
+
+
+async def foxyproxy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/foxyproxy [user1 user2 ...] — FoxyProxy import faylini yasab beradi."""
+    if not _authorized(update):
+        return
+    if context.args:
+        usernames = [a.lstrip("@") for a in context.args]
+    else:
+        usernames = [a["username"] for a in instagram_client.list_accounts()]
+    if not usernames:
+        await update.message.reply_text(
+            "Foydalanish:\n/foxyproxy user1 user2 ...\n"
+            "(yoki avval akkaunt qo'shsangiz — hammasi uchun yasayman)")
+        return
+    content, n = _foxyproxy_file(usernames)
+    if not n:
+        await update.message.reply_text("Proxy sozlanmagan.")
+        return
+    buf = io.BytesIO(content)
+    await update.message.reply_document(
+        document=InputFile(buf, filename="foxyproxy-komment-qiroli.json"),
+        caption=(f"📥 {n} akkaunt proxysi tayyor.\n\n"
+                 "FoxyProxy → Options → Import Settings → shu faylni tanlang.\n"
+                 "Keyin 🦊 → kerakli akkaunt nomini tanlab yoqing."),
+    )
 
 
 async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -472,6 +530,7 @@ def main() -> None:
     app.add_handler(CommandHandler("queue", queue_cmd))
     app.add_handler(CommandHandler("proxy", proxy_cmd))
     app.add_handler(CommandHandler("add", add_cmd))
+    app.add_handler(CommandHandler("foxyproxy", foxyproxy_cmd))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))
