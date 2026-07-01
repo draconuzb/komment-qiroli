@@ -424,6 +424,7 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
         _save_accounts(accounts)
 
     _clients[username] = cl
+    _set_health(username, True)  # login_by_sessionid muvaffaqiyatli — darrov TIRIK belgilaymiz
     return username
 
 
@@ -467,6 +468,7 @@ def _finalize_login(cl: Client, username_hint: str, proxy: str) -> str:
         _save_accounts(accounts)
 
     _clients[username] = cl
+    _set_health(username, True)  # muvaffaqiyatli login — darrov TIRIK
     return username
 
 
