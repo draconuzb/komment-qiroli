@@ -131,11 +131,10 @@ _HELP = (
     "• 📋 Navbat — kutayotgan kommentlar, keyingisi qachon.\n"
     "• 📡 Kanallar — manba va log kanallar.\n"
     "• 🧹 Tozalash — navbatdagi (hali joylanmagan) kommentlarni bekor qiladi.\n\n"
-    "➕ Akkaunt qo'shish (proxy bilan, o'lmaydigan):\n"
-    "1) /foxyproxy user1 user2 ... — FoxyProxy import faylini olasiz (bir marta import).\n"
-    "2) 🦊 → akkaunt nomini tanlab yoqing → o'sha akkaunt bilan IG'ga kiring.\n"
-    "3) sessionid'ni oling → /add <username> <sessionid>\n"
-    "(yoki bitta akkaunt uchun: /proxy <username>)\n\n"
+    "➕ Akkaunt qo'shish (oddiy, o'lmaydigan):\n"
+    "1) O'zingizdan (ODDIY, proxysiz) akkauntga kiring — proxy orqali LOGIN qilmang!\n"
+    "2) F12 → Application → Cookies → sessionid'ni oling.\n"
+    "3) /add <username> <sessionid> — bot uni barqaror UZ proxy bilan qo'shadi.\n\n"
     "Kommentlar oyna ichida tasodifiy, ≥3 daqiqa oraliq bilan joylanadi."
 )
 
@@ -397,22 +396,15 @@ async def _add_username(update: Update, context: ContextTypes.DEFAULT_TYPE, text
         return
     context.user_data["add_user"] = username
     context.user_data["add_state"] = _ADD_SID
-    parts = instagram_client.proxy_parts_for(username)
-    if parts:
-        await update.message.reply_text(
-            f"🔑 @{username} uchun brauzer (FoxyProxy) proxysi:\n\n"
-            f"Host:     {parts['host']}\n"
-            f"Port:     {parts['port']}\n"
-            f"Username: {parts['username']}\n"
-            f"Password: {parts['password']}\n\n"
-            f"1) Shu proxyni FoxyProxy'ga qo'ying va YOQING.\n"
-            f"2) whatismyipaddress.com — IP UZ ekanini tekshiring.\n"
-            f"3) O'sha brauzerда @{username} bilan Instagram'ga kiring.\n"
-            f"4) F12 → Application → Cookies → sessionid'ni nusxalab, shu yerga yuboring:",
-            reply_markup=_kb_cancel(),
-        )
-    else:
-        await update.message.reply_text("sessionid'ni yuboring:", reply_markup=_kb_cancel())
+    await update.message.reply_text(
+        f"➕ @{username}\n\n"
+        f"⚠️ Proxy orqali LOGIN QILMANG — Instagram bloklaydi. Oddiy kiring:\n\n"
+        f"1) O'zingizning telefon/brauzeringizda (ODDIY, proxysiz) @{username} ga kiring.\n"
+        f"2) F12 → Application → Cookies → instagram.com → sessionid'ni nusxalang.\n"
+        f"3) Shu sessionid'ni shu yerga yuboring.\n\n"
+        f"Men uni avtomatik BARQAROR UZ proxy bilan qo'shaman (o'zingiz proxy sozlashingiz shart emas).",
+        reply_markup=_kb_cancel(),
+    )
 
 
 async def _add_sessionid(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
