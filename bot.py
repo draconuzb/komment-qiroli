@@ -87,6 +87,26 @@ def _accelerate_queue() -> int:
         return -1
 
 
+def _check_all():
+    try:
+        r = requests.post(f"{_INTERNAL_URL}/api/hook/check",
+                          headers={"X-Webhook-Token": config.WEBHOOK_TOKEN}, timeout=300)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def _remove_dead():
+    try:
+        r = requests.post(f"{_INTERNAL_URL}/api/hook/remove-dead",
+                          headers={"X-Webhook-Token": config.WEBHOOK_TOKEN}, timeout=60)
+        r.raise_for_status()
+        return r.json().get("removed", [])
+    except Exception:
+        return None
+
+
 def _add_account_via_app(username: str, sessionid: str) -> str:
     r = requests.post(
         f"{_INTERNAL_URL}/api/hook/add-account",
@@ -127,7 +147,7 @@ _HELP = (
     "ℹ️ Yordam\n\n"
     "• Manba kanalga IG reel/post havolasini tashlang — men avtomatik navbatga qo'shaman.\n"
     "• Menga shaxsiy (DM) havola yuborsangiz ham bo'ladi.\n"
-    "• 📊 Akkauntlar — holat (tirik/o'lik, kunlik hisob).\n"
+    "• 📊 Akkauntlar — holat + 🩺 Tekshirish + 🗑 o'liklarni o'chirish.\n"
     "• 📋 Navbat — kutayotgan kommentlar, keyingisi qachon.\n"
     "• 📡 Kanallar — manba va log kanallar.\n"
     "• 🧹 Tozalash — navbatdagi (hali joylanmagan) kommentlarni bekor qiladi.\n\n"
@@ -372,6 +392,26 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif data == "accel_yes":
             n = await asyncio.get_event_loop().run_in_executor(None, _accelerate_queue)
             await q.edit_message_text(f"⚡ {n} ta komment 2-4 daqiqa oraliq bilan jo'natiladi." if n >= 0 else "❌ Bo'lmadi.")
+        elif data == "check":
+            await q.edit_message_text("⏳ Akkauntlar tekshirilyapti... (biroz kuting)")
+            res = await asyncio.get_event_loop().run_in_executor(None, _check_all)
+            if not res:
+                await q.edit_message_text("❌ Tekshirib bo'lmadi.")
+            else:
+                lines = [f"🩺 Tekshiruv natijasi: 🟢 {res['alive']} · 🔴 {res['dead']}\n"]
+                for r in res["results"][:45]:
+                    lines.append(f"{'🟢' if r['alive'] else '🔴'} @{r['username']}")
+                kb = InlineKeyboardMarkup([[_ibtn("🗑 O'liklarni o'chir", "menu:removedead", "danger")]]) if res['dead'] else None
+                await q.edit_message_text("\n".join(lines), reply_markup=kb)
+        elif data == "removedead":
+            await q.edit_message_text("🗑 O'lik akkauntlarni o'chiramizmi?", reply_markup=_yesno("removedead_yes"))
+        elif data == "removedead_yes":
+            removed = await asyncio.get_event_loop().run_in_executor(None, _remove_dead)
+            if removed is None:
+                await q.edit_message_text("❌ O'chirib bo'lmadi.")
+            else:
+                await q.edit_message_text(f"🗑 {len(removed)} o'lik akkaunt o'chirildi." +
+                                          ("\n" + ", ".join("@" + u for u in removed) if removed else ""))
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz
 
@@ -459,7 +499,11 @@ async def on_private_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if text == B_ACCOUNTS:
-        await update.message.reply_text(_fmt_status(), reply_markup=_kb())
+        kb = InlineKeyboardMarkup([[
+            _ibtn("🩺 Tekshirish", "menu:check", "primary"),
+            _ibtn("🗑 O'liklarni o'chir", "menu:removedead", "danger"),
+        ]])
+        await update.message.reply_text(_fmt_status(), reply_markup=kb)
     elif text == B_QUEUE:
         kb = InlineKeyboardMarkup([[_ibtn("🧹 Navbatni tozalash", "menu:clear", "danger")]])
         await update.message.reply_text(_fmt_queue(), reply_markup=kb)

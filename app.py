@@ -698,6 +698,38 @@ def hook_add_account(body: HookAddBody, x_webhook_token: str | None = Header(def
     return {"ok": True, "username": username}
 
 
+@app.post("/api/hook/check")
+def hook_check(x_webhook_token: str | None = Header(default=None), token: str | None = None):
+    """Token bilan barcha akkaunt sessiyasini tekshiradi (bot uchun, sinxron)."""
+    _check_webhook(x_webhook_token or token)
+    results = []
+    for a in instagram_client.list_accounts():
+        u = a["username"]
+        try:
+            alive = bool(instagram_client.check_account(u))
+        except Exception:
+            alive = False
+        results.append({"username": u, "alive": alive})
+    return {"ok": True, "results": results,
+            "alive": sum(1 for r in results if r["alive"]),
+            "dead": sum(1 for r in results if not r["alive"])}
+
+
+@app.post("/api/hook/remove-dead")
+def hook_remove_dead(x_webhook_token: str | None = Header(default=None), token: str | None = None):
+    """Token bilan o'lik (health.alive == False) akkauntlarni o'chiradi (bot uchun)."""
+    _check_webhook(x_webhook_token or token)
+    removed = []
+    for a in instagram_client.list_accounts():
+        if (a.get("health") or {}).get("alive") is False:
+            try:
+                instagram_client.remove_account(a["username"])
+                removed.append(a["username"])
+            except Exception:
+                pass
+    return {"ok": True, "removed": removed}
+
+
 # ---------- Like ----------
 
 class ActionBody(BaseModel):
