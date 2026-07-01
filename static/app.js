@@ -221,12 +221,15 @@ async function doAddAccount() {
   if (!sid) { toast("sessionid kiriting", "err"); return; }
   const proxy = $("proxy-input").value.trim();
   const use_proxy = $("sessionid-useproxy").checked;
+  const username = $("sessionid-username") ? $("sessionid-username").value.trim() : "";
   const btn = $("ig-add-btn");
   setLoading(btn, true);
   try {
-    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid, proxy, use_proxy }) });
+    const res = await api("/api/accounts", { method: "POST", body: JSON.stringify({ sessionid: sid, proxy, use_proxy, username }) });
     $("sessionid-input").value = "";
     $("proxy-input").value = "";
+    if ($("sessionid-username")) $("sessionid-username").value = "";
+    if ($("proxy-preview")) $("proxy-preview").style.display = "none";
     toast("Akkaunt qo'shildi: @" + res.username, "ok");
     state.accounts = res.accounts;
     refreshAccountsUI();
@@ -234,6 +237,26 @@ async function doAddAccount() {
     if (e.status === 401) { location.reload(); return; }
     toast(e.message, "err");
   } finally { setLoading(btn, false); }
+}
+
+async function showBrowserProxy() {
+  const u = $("sessionid-username") ? $("sessionid-username").value.trim() : "";
+  if (!u) { toast("Avval username kiriting", "err"); return; }
+  const box = $("proxy-preview");
+  try {
+    const p = await api("/api/proxy/preview?username=" + encodeURIComponent(u));
+    box.textContent =
+      "FoxyProxy / brauzer proxy sozlamalari:\n\n" +
+      "Host (IP):   " + p.host + "\n" +
+      "Port:        " + p.port + "\n" +
+      "Username:    " + p.username + "\n" +
+      "Password:    " + p.password + "\n\n" +
+      "(Type: HTTP. Bu proxy shu akkaunt uchun — bot ham aynan shuni ishlatadi.)";
+    box.style.display = "";
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    toast(e.message, "err");
+  }
 }
 
 // Plan B: login + parol bilan kirish (2FA bilan)
@@ -892,6 +915,7 @@ $("login-btn").onclick = doLogin;
 $("login-password").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
 $("logout-btn").onclick = doLogout;
 $("ig-add-btn").onclick = doAddAccount;
+if ($("show-proxy-btn")) $("show-proxy-btn").onclick = showBrowserProxy;
 $("sessionid-input").addEventListener("keydown", (e) => { if (e.key === "Enter") doAddAccount(); });
 $("ig-login-btn").onclick = doLoginAccount;
 $("ig-2fa-btn").onclick = doVerify2FA;

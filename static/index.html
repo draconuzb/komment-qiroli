@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Komment Qiroli — Boshqaruv paneli</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260701b" />
+  <link rel="stylesheet" href="/static/style.css?v=20260701c" />
 </head>
 <body>
   <div class="bg-blobs" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -87,19 +87,26 @@
         </div>
 
         <details class="howto">
-          <summary>+ Akkaunt qo'shish (sessionid orqali)</summary>
+          <summary>+ Akkaunt qo'shish (sessionid orqali — brauzer proxy bilan)</summary>
           <ol>
-            <li>Brauzerda <strong>instagram.com</strong>ga kerakli akkaunt bilan kiring.</li>
-            <li><kbd>F12</kbd> → <strong>Application</strong> → <strong>Cookies</strong> → <code>https://www.instagram.com</code>.</li>
-            <li><code>sessionid</code> qatorining <strong>Value</strong>sini nusxalang va pastga joylang.</li>
+            <li>Username kiriting → <strong>🔑 Brauzer uchun proxy ko'rsat</strong> bosing.</li>
+            <li>Chiqqan host/port/login/parolni brauzer <strong>FoxyProxy</strong> kengaytmasiga qo'ying va yoqing.</li>
+            <li>O'sha brauzerda <strong>instagram.com</strong>ga shu akkaunt bilan kiring.</li>
+            <li><kbd>F12</kbd> → <strong>Application</strong> → <strong>Cookies</strong> → <code>sessionid</code> qiymatini nusxalang.</li>
+            <li>Pastga: username + sessionid joylang, <strong>🛡 Proxy ☑️</strong> belgilangan holda <strong>Qo'shish</strong>.</li>
           </ol>
+          <div class="ig-connect">
+            <input type="text" id="sessionid-username" placeholder="Username (@siz) — proxy mosligi uchun MUHIM" autocomplete="off" />
+            <button class="btn btn--ghost" id="show-proxy-btn" type="button">🔑 Brauzer uchun proxy</button>
+          </div>
+          <pre id="proxy-preview" class="proxy-preview" style="display:none;"></pre>
           <div class="ig-connect">
             <input type="password" id="sessionid-input" placeholder="sessionid qiymatini joylang" autocomplete="off" />
             <button class="btn btn--primary" id="ig-add-btn"><span class="btn-label">Qo'shish</span></button>
           </div>
           <input type="text" id="proxy-input" class="proxy-add" placeholder="Qo'lda proxy (ixtiyoriy): http://user:pass@host:port" autocomplete="off" />
-          <label class="proxy-check"><input type="checkbox" id="sessionid-useproxy" /> 🛡 Proxy (UZ) ishlatish — belgilanmasa mini-PC IP'sidan</label>
-          <p class="muted">Tavsiya: sessionid'ni shu mini-PC brauzeridan oling (IP mos kelsin). Proxy belgilansangiz — alohida UZ IP biriktiriladi.</p>
+          <label class="proxy-check"><input type="checkbox" id="sessionid-useproxy" checked /> 🛡 Proxy (UZ) ishlatish — belgilanmasa mini-PC IP'sidan</label>
+          <p class="muted">MUHIM: brauzer proxysi va bot proxysi bir xil bo'lishi uchun username to'g'ri kiriting. Shunda cookie va bot bir IP'da ishlaydi — akkaunt o'lmaydi.</p>
         </details>
 
         <details class="howto">
@@ -298,6 +305,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=20260701b"></script>
+  <script src="/static/app.js?v=20260701c"></script>
 </body>
 </html>

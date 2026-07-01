@@ -233,6 +233,7 @@ body {
 .proxy-add { margin-top: 10px; }
 .proxy-check { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
 .proxy-check input { width: 16px; height: 16px; cursor: pointer; }
+.proxy-preview { margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--surface-2, rgba(120,120,140,.12)); border: 1px solid var(--border, rgba(120,120,140,.25)); font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
 
 /* ============ Forms / inputs ============ */
 textarea, .ig-connect input, #provider-select, .field input {

@@ -141,13 +141,24 @@ class AddAccountBody(BaseModel):
     sessionid: str
     proxy: str = ""
     use_proxy: bool | None = None   # checkbox: True=proxy, False=mini-PC IP, None=default
+    username: str = ""              # ixtiyoriy: proxy mosligi uchun (brauzer bilan bir IP)
+
+
+@app.get("/api/proxy/preview")
+def proxy_preview(username: str, session: str | None = Cookie(default=None)):
+    """Brauzer (FoxyProxy) uchun akkaunt proxysi qismlarini qaytaradi."""
+    _check_auth(session)
+    parts = instagram_client.proxy_parts_for(username)
+    if not parts:
+        raise HTTPException(status_code=400, detail="Username kiriting yoki proxy sozlanmagan.")
+    return parts
 
 
 @app.post("/api/accounts")
 def add_account(body: AddAccountBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
     try:
-        username = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy, use_proxy=body.use_proxy)
+        username = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy, use_proxy=body.use_proxy, username_hint=body.username)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
@@ -669,6 +680,22 @@ def hook_accelerate(x_webhook_token: str | None = Header(default=None), token: s
     _check_webhook(x_webhook_token or token)
     n = queue_mgr.accelerate()
     return {"ok": True, "accelerated": n}
+
+
+class HookAddBody(BaseModel):
+    sessionid: str
+    username: str = ""
+    use_proxy: bool = True
+
+
+@app.post("/api/hook/add-account")
+def hook_add_account(body: HookAddBody, x_webhook_token: str | None = Header(default=None), token: str | None = None):
+    """Token bilan sessionid orqali akkaunt qo'shish (Telegram bot uchun).
+    username berilsa — proxy o'sha akkaunt sessiyasi bilan (brauzer IP'si bilan bir xil)."""
+    _check_webhook(x_webhook_token or token)
+    username = instagram_client.add_account_by_sessionid(
+        body.sessionid, use_proxy=body.use_proxy, username_hint=body.username)
+    return {"ok": True, "username": username}
 
 
 # ---------- Like ----------

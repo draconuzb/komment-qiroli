@@ -78,6 +78,22 @@ def _accelerate_queue() -> int:
         return -1
 
 
+def _add_account_via_app(username: str, sessionid: str) -> str:
+    r = requests.post(
+        f"{_INTERNAL_URL}/api/hook/add-account",
+        headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
+        json={"username": username, "sessionid": sessionid, "use_proxy": True},
+        timeout=120,
+    )
+    if not r.ok:
+        try:
+            detail = r.json().get("detail") or r.text[:200]
+        except ValueError:
+            detail = r.text[:200]
+        raise RuntimeError(detail)
+    return r.json().get("username", username)
+
+
 def _channel_allowed(post) -> bool:
     srcs = config.TELEGRAM_SOURCE_CHANNELS
     if not srcs:
@@ -106,6 +122,10 @@ _HELP = (
     "• 📋 Navbat — kutayotgan kommentlar, keyingisi qachon.\n"
     "• 📡 Kanallar — manba va log kanallar.\n"
     "• 🧹 Tozalash — navbatdagi (hali joylanmagan) kommentlarni bekor qiladi.\n\n"
+    "➕ Akkaunt qo'shish (proxy bilan, o'lmaydigan):\n"
+    "1) /proxy <username> — brauzer proxy sozlamalarini olasiz.\n"
+    "2) Brauzer (FoxyProxy)ga qo'yib, o'sha akkaunt bilan IG'ga kiring.\n"
+    "3) sessionid'ni oling → /add <username> <sessionid>\n\n"
     "Kommentlar oyna ichida tasodifiy, ≥3 daqiqa oraliq bilan joylanadi."
 )
 
@@ -193,6 +213,51 @@ async def queue_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         return
     await update.message.reply_text(_fmt_queue(), reply_markup=_back_menu())
+
+
+async def proxy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/proxy <username> — brauzer (FoxyProxy) uchun proxy sozlamalari."""
+    if not _authorized(update):
+        return
+    args = context.args
+    if not args:
+        await update.message.reply_text("Foydalanish:\n/proxy <username>\nMasalan: /proxy abbosqosimov11")
+        return
+    parts = instagram_client.proxy_parts_for(args[0])
+    if not parts:
+        await update.message.reply_text("Proxy sozlanmagan yoki username noto'g'ri.")
+        return
+    u = args[0].lstrip("@")
+    await update.message.reply_text(
+        f"🔑 Brauzer proxy — @{u}\n\n"
+        f"Host:     {parts['host']}\n"
+        f"Port:     {parts['port']}\n"
+        f"Username: {parts['username']}\n"
+        f"Password: {parts['password']}\n\n"
+        f"Type: HTTP. Shu proxyni brauzer (FoxyProxy)ga qo'ying, yoqing, "
+        f"o'sha brauzerda @{u} bilan Instagram'ga kiring, sessionid'ni oling, keyin:\n"
+        f"/add {u} <sessionid>"
+    )
+
+
+async def add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/add <username> <sessionid> — akkauntni AYNI proxy bilan qo'shadi."""
+    if not _authorized(update):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Foydalanish:\n/add <username> <sessionid>\n(avval /proxy bilan brauzerni sozlang)")
+        return
+    username = args[0].lstrip("@")
+    sessionid = args[1].strip()
+    await update.message.reply_text(f"⏳ @{username} qo'shilyapti (proxy orqali)...")
+    loop = asyncio.get_event_loop()
+    try:
+        name = await loop.run_in_executor(None, lambda: _add_account_via_app(username, sessionid))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Qo'shib bo'lmadi: {str(e)[:250]}")
+        return
+    await update.message.reply_text(f"✅ @{name} qo'shildi — barqaror UZ proxy IP'da. Endi o'lmasligi kerak.")
 
 
 async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -298,6 +363,8 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("queue", queue_cmd))
+    app.add_handler(CommandHandler("proxy", proxy_cmd))
+    app.add_handler(CommandHandler("add", add_cmd))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))

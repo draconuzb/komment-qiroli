@@ -223,6 +223,23 @@ def build_auto_proxy(token: str) -> str:
     return f"http://{config.PROXY_USER}:{pw}@{config.PROXY_HOST}{port}"
 
 
+def proxy_parts_for(username: str) -> dict:
+    """Brauzer (FoxyProxy) sozlash uchun akkaunt IPRoyal proxysining qismlari.
+    Bot ham AYNI shu sessiyani ishlatadi → brauzer va bot IP'si bir xil bo'ladi."""
+    username = (username or "").strip().lstrip("@")
+    if not username or not (config.PROXY_HOST and config.PROXY_USER and config.PROXY_PASS):
+        return {}
+    sess = _sess_name(username)
+    pw = (f"{config.PROXY_PASS}_country-{config.PROXY_COUNTRY}"
+          f"_session-{sess}_lifetime-{config.PROXY_LIFETIME}")
+    port = str(config.PROXY_PORT or "")
+    return {
+        "host": config.PROXY_HOST, "port": port,
+        "username": config.PROXY_USER, "password": pw, "session": sess,
+        "url": f"http://{config.PROXY_USER}:{pw}@{config.PROXY_HOST}:{port}",
+    }
+
+
 def _use_local_pool() -> bool:
     """Avto-proxy local modem pool'dan olinishi kerakmi (config.PROXY_MODE bo'yicha)."""
     mode = getattr(config, "PROXY_MODE", "auto")
@@ -344,25 +361,33 @@ def _save_accounts(usernames: list[str]) -> None:
 
 # ---------- Akkauntlarni boshqarish ----------
 
-def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None) -> str:
+def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
+                             username_hint: str = "") -> str:
     """Brauzerdan olingan sessionid orqali yangi akkaunt qo'shadi. Username qaytaradi.
 
     use_proxy: True — auto proxy (modem/IPRoyal); False — proxysiz (mini-PC IP);
     None — config.PROXY_AUTO bo'yicha. proxy (matn) berilsa — o'sha ishlatiladi.
+    username_hint: berilsa — proxy BOSHIDANoq shu akkaunt sessiyasi bilan (brauzerда
+    ishlatilgan IP bilan bir xil) — cookie mosligi buzilmaydi (bootstrap IP ishlatilmaydi).
     """
     sessionid = sessionid.strip().strip('"')
     if not sessionid:
         raise ValueError("sessionid bo'sh")
 
+    username_hint = (username_hint or "").strip().lstrip("@")
     proxy = (proxy or "").strip()
     manual = bool(proxy)
     want_auto = use_proxy if use_proxy is not None else bool(config.PROXY_AUTO)
     auto = (not manual) and want_auto
     if auto:
-        # Avto proxy: login uchun vaqtinchalik UZ IP (username hali noma'lum).
-        proxy = _bootstrap_proxy() or build_auto_proxy(
-            hashlib.md5(sessionid.encode()).hexdigest()[:12]
-        )
+        if username_hint:
+            # Username ma'lum — brauzerда ishlatilgan bilan AYNI proxy (bir xil IP).
+            proxy = auto_proxy_for(username_hint)
+        else:
+            # Username noma'lum — vaqtinchalik UZ IP (keyin username bo'yicha almashtiriladi).
+            proxy = _bootstrap_proxy() or build_auto_proxy(
+                hashlib.md5(sessionid.encode()).hexdigest()[:12]
+            )
 
     cl = _new_client()
     if proxy:
