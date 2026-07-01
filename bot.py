@@ -11,7 +11,13 @@ import os
 import re
 
 import requests
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -130,20 +136,47 @@ _HELP = (
 )
 
 
-def _main_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Akkauntlar", callback_data="menu:status"),
-         InlineKeyboardButton("📋 Navbat", callback_data="menu:queue")],
-        [InlineKeyboardButton("⚡ Hoziroq jo'natish", callback_data="menu:accel"),
-         InlineKeyboardButton("🧹 Navbatni tozalash", callback_data="menu:clear")],
-        [InlineKeyboardButton("📡 Kanallar", callback_data="menu:sources")],
-        [InlineKeyboardButton("🔄 Yangilash", callback_data="menu:home"),
-         InlineKeyboardButton("ℹ️ Yordam", callback_data="menu:help")],
-    ])
+# ---------- Rangli tugma helperlari (Bot API 9.4: style = primary/success/danger) ----------
+
+def _ibtn(text: str, callback_data: str, style: str | None = None) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text, callback_data=callback_data,
+                                api_kwargs=({"style": style} if style else None))
 
 
-def _back_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Orqaga", callback_data="menu:home")]])
+def _kbtn(text: str, style: str | None = None) -> KeyboardButton:
+    return KeyboardButton(text, api_kwargs=({"style": style} if style else None))
+
+
+# Doimiy (pastdagi) tugmalar matni — routing uchun
+B_ACCOUNTS = "📊 Akkauntlar"
+B_QUEUE = "📋 Navbat"
+B_ADD = "➕ Akkaunt qo'shish"
+B_ACCEL = "⚡ Hoziroq jo'natish"
+B_SOURCES = "📡 Kanallar"
+B_HELP = "ℹ️ Yordam"
+B_CANCEL = "❌ Bekor qilish"
+
+
+def _kb() -> ReplyKeyboardMarkup:
+    """Doimiy rangli klaviatura — slash komanda kerak emas."""
+    return ReplyKeyboardMarkup(
+        [[_kbtn(B_ACCOUNTS, "primary"), _kbtn(B_QUEUE, "primary")],
+         [_kbtn(B_ADD, "success"), _kbtn(B_ACCEL, "success")],
+         [_kbtn(B_SOURCES), _kbtn(B_HELP)]],
+        resize_keyboard=True, is_persistent=True,
+    )
+
+
+def _kb_cancel() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup([[_kbtn(B_CANCEL, "danger")]],
+                               resize_keyboard=True, is_persistent=True)
+
+
+def _yesno(action: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _ibtn("✅ Ha", f"menu:{action}", "success"),
+        _ibtn("❌ Yo'q", "menu:dismiss", "danger"),
+    ]])
 
 
 def _fmt_status() -> str:
@@ -200,19 +233,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         await update.message.reply_text("Kechirasiz, sizda ruxsat yo'q.")
         return
-    await update.message.reply_text(_WELCOME, reply_markup=_main_menu())
+    context.user_data.pop("add_state", None)
+    await update.message.reply_text(_WELCOME, reply_markup=_kb())
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         return
-    await update.message.reply_text(_fmt_status(), reply_markup=_back_menu())
+    await update.message.reply_text(_fmt_status(), reply_markup=_kb())
 
 
 async def queue_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         return
-    await update.message.reply_text(_fmt_queue(), reply_markup=_back_menu())
+    kb = InlineKeyboardMarkup([[_ibtn("🧹 Navbatni tozalash", "menu:clear", "danger")]])
+    await update.message.reply_text(_fmt_queue(), reply_markup=kb)
 
 
 async def proxy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -261,6 +296,7 @@ async def add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Inline tugma (tasdiqlash dialoglari) uchun."""
     q = update.callback_query
     await q.answer()
     if not _authorized(update):
@@ -268,61 +304,132 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     data = q.data.split(":", 1)[1]
     try:
-        if data == "home":
-            await q.edit_message_text(_WELCOME, reply_markup=_main_menu())
-        elif data == "status":
-            await q.edit_message_text(_fmt_status(), reply_markup=_back_menu())
-        elif data == "queue":
-            await q.edit_message_text(_fmt_queue(), reply_markup=_back_menu())
-        elif data == "sources":
-            await q.edit_message_text(_fmt_sources(), reply_markup=_back_menu())
-        elif data == "help":
-            await q.edit_message_text(_HELP, reply_markup=_back_menu())
+        if data == "dismiss":
+            await q.edit_message_text("Bekor qilindi.")
         elif data == "clear":
-            kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Ha, tozala", callback_data="menu:clear_yes"),
-                InlineKeyboardButton("❌ Yo'q", callback_data="menu:home"),
-            ]])
-            await q.edit_message_text("🧹 Navbatdagi (hali joylanmagan) kommentlarni bekor qilamizmi?", reply_markup=kb)
+            await q.edit_message_text("🧹 Navbatdagi (hali joylanmagan) kommentlarni bekor qilamizmi?",
+                                      reply_markup=_yesno("clear_yes"))
         elif data == "clear_yes":
             n = await asyncio.get_event_loop().run_in_executor(None, _clear_queue)
-            msg = f"🧹 {n} ta navbatdan o'chirildi." if n >= 0 else "❌ Tozalab bo'lmadi."
-            await q.edit_message_text(msg, reply_markup=_back_menu())
-        elif data == "accel":
-            kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Ha, jo'nat", callback_data="menu:accel_yes"),
-                InlineKeyboardButton("❌ Yo'q", callback_data="menu:home"),
-            ]])
-            await q.edit_message_text("⚡ Kutayotgan kommentlarni HOZIROQ (2-4 daqiqa oraliq) jo'natamizmi?", reply_markup=kb)
+            await q.edit_message_text(f"🧹 {n} ta navbatdan o'chirildi." if n >= 0 else "❌ Tozalab bo'lmadi.")
         elif data == "accel_yes":
             n = await asyncio.get_event_loop().run_in_executor(None, _accelerate_queue)
-            msg = f"⚡ {n} ta komment 2-4 daqiqa oraliq bilan jo'natiladi." if n >= 0 else "❌ Bo'lmadi."
-            await q.edit_message_text(msg, reply_markup=_back_menu())
+            await q.edit_message_text(f"⚡ {n} ta komment 2-4 daqiqa oraliq bilan jo'natiladi." if n >= 0 else "❌ Bo'lmadi.")
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz
 
 
-async def on_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not _authorized(update):
-        await update.message.reply_text("Kechirasiz, sizda ruxsat yo'q.")
+# ---------- Tugmali akkaunt qo'shish oqimi ----------
+_ADD_USER = "await_username"
+_ADD_SID = "await_sessionid"
+
+
+async def _add_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data["add_state"] = _ADD_USER
+    await update.message.reply_text(
+        "➕ Akkaunt qo'shish\n\nAvval akkaunt username'ini yuboring (masalan: abbosqosimov11):",
+        reply_markup=_kb_cancel(),
+    )
+
+
+async def _add_username(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    username = text.lstrip("@").strip()
+    if not username or " " in username:
+        await update.message.reply_text("Username noto'g'ri. Qaytadan yuboring:", reply_markup=_kb_cancel())
         return
-    m = _IG_URL_RE.search(update.message.text or "")
-    if not m:
-        await update.message.reply_text("Instagram havolasini yuboring yoki /start bosing.")
-        return
+    context.user_data["add_user"] = username
+    context.user_data["add_state"] = _ADD_SID
+    parts = instagram_client.proxy_parts_for(username)
+    if parts:
+        await update.message.reply_text(
+            f"🔑 @{username} uchun brauzer (FoxyProxy) proxysi:\n\n"
+            f"Host:     {parts['host']}\n"
+            f"Port:     {parts['port']}\n"
+            f"Username: {parts['username']}\n"
+            f"Password: {parts['password']}\n\n"
+            f"1) Shu proxyni FoxyProxy'ga qo'ying va YOQING.\n"
+            f"2) whatismyipaddress.com — IP UZ ekanini tekshiring.\n"
+            f"3) O'sha brauzerда @{username} bilan Instagram'ga kiring.\n"
+            f"4) F12 → Application → Cookies → sessionid'ni nusxalab, shu yerga yuboring:",
+            reply_markup=_kb_cancel(),
+        )
+    else:
+        await update.message.reply_text("sessionid'ni yuboring:", reply_markup=_kb_cancel())
+
+
+async def _add_sessionid(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+    username = context.user_data.get("add_user", "")
+    context.user_data.pop("add_state", None)
+    context.user_data.pop("add_user", None)
+    await update.message.reply_text(f"⏳ @{username} qo'shilyapti (proxy orqali)...", reply_markup=_kb())
     loop = asyncio.get_event_loop()
     try:
-        res = await loop.run_in_executor(None, lambda: _enqueue_via_app(m.group(0), "DM"))
+        name = await loop.run_in_executor(None, lambda: _add_account_via_app(username, text.strip()))
     except Exception as e:
-        await update.message.reply_text(f"❌ Navbatga qo'shib bo'lmadi: {str(e)[:150]}")
+        await update.message.reply_text(f"❌ Qo'shib bo'lmadi: {str(e)[:250]}", reply_markup=_kb())
+        return
+    await update.message.reply_text(f"✅ @{name} qo'shildi — barqaror UZ proxy IP'da. Endi o'lmasligi kerak.",
+                                    reply_markup=_kb())
+
+
+async def _do_enqueue_dm(update: Update, url: str) -> None:
+    loop = asyncio.get_event_loop()
+    try:
+        res = await loop.run_in_executor(None, lambda: _enqueue_via_app(url, "DM"))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Navbatga qo'shib bo'lmadi: {str(e)[:150]}", reply_markup=_kb())
         return
     q = res.get("queued", 0)
     last_at = res.get("last_at", 0)
     eta = datetime.datetime.fromtimestamp(last_at).strftime("%m-%d %H:%M") if last_at else "?"
     await update.message.reply_text(
         f"✅ {q} akkaunt navbatga qo'shildi. Oxirgisi ~{eta}.\nNatijani LOG kanaldan kuzating.",
-        reply_markup=_back_menu(),
-    )
+        reply_markup=_kb())
+
+
+async def on_private_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Barcha DM matnlari — tugmalar, akkaunt qo'shish oqimi, IG havola."""
+    if not _authorized(update):
+        await update.message.reply_text("Kechirasiz, sizda ruxsat yo'q.")
+        return
+    text = (update.message.text or "").strip()
+
+    if text == B_CANCEL:
+        context.user_data.pop("add_state", None)
+        context.user_data.pop("add_user", None)
+        await update.message.reply_text("Bekor qilindi.", reply_markup=_kb())
+        return
+
+    state = context.user_data.get("add_state")
+    if state == _ADD_USER:
+        await _add_username(update, context, text)
+        return
+    if state == _ADD_SID:
+        await _add_sessionid(update, context, text)
+        return
+
+    if text == B_ACCOUNTS:
+        await update.message.reply_text(_fmt_status(), reply_markup=_kb())
+    elif text == B_QUEUE:
+        kb = InlineKeyboardMarkup([[_ibtn("🧹 Navbatni tozalash", "menu:clear", "danger")]])
+        await update.message.reply_text(_fmt_queue(), reply_markup=kb)
+    elif text == B_SOURCES:
+        await update.message.reply_text(_fmt_sources(), reply_markup=_kb())
+    elif text == B_HELP:
+        await update.message.reply_text(_HELP, reply_markup=_kb())
+    elif text == B_ADD:
+        await _add_start(update, context)
+    elif text == B_ACCEL:
+        await update.message.reply_text(
+            "⚡ Kutayotgan kommentlarni HOZIROQ (2-4 daqiqa oraliq) jo'natamizmi?",
+            reply_markup=_yesno("accel_yes"))
+    else:
+        m = _IG_URL_RE.search(text)
+        if m:
+            await _do_enqueue_dm(update, m.group(0))
+        else:
+            await update.message.reply_text("Tugmalardan foydalaning yoki IG havola yuboring 👇",
+                                            reply_markup=_kb())
 
 
 def _extract_ig_url(post) -> str:
@@ -368,7 +475,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))
-    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_dm))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_private_text))
     logger.info("Telegram bot ishga tushdi.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
