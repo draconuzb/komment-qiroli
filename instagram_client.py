@@ -405,15 +405,10 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
     if not username:
         raise RuntimeError("Akkaunt nomini aniqlab bo'lmadi.")
 
-    # Avto rejimda — username bo'yicha barqaror UZ sticky-IP (har safar ~o'sha IP).
-    if auto:
-        stable = auto_proxy_for(username)
-        if stable:
-            proxy = stable
-            try:
-                cl.set_proxy(proxy)
-            except Exception:
-                pass
+    # MUHIM: proxyni ALMASHTIRMAYMIZ. Cookie allaqachon telefon IP'sida tug'ilgan;
+    # agar bu yerda yana boshqa proxy IP'ga o'tsak, sessiya 2-3 IP'ni bosib o'tadi va
+    # Instagram uni "shubhali" deb O'LDIRADI (double-hop). Shuning uchun validatsiya
+    # qilingan AYNI proxy (yuqorida tanlangani) akkauntning doimiy IP'si bo'lib qoladi.
 
     os.makedirs(_SESSIONS_DIR, exist_ok=True)
     cl.dump_settings(_session_path(username))
