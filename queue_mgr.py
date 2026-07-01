@@ -44,8 +44,11 @@ _FILE = os.path.join(config.DATA_DIR, "queue.json")
 _lock = threading.RLock()
 _DONE_KEEP = 300  # eski done/failed yozuvlardan nechtasini saqlash
 
-_DEAD_HINTS = ("login", "sessiya", "o'lik", "logged_out", "logged out", "challenge",
-               "not found", "checkpoint", "401", "403", "unauthorized")
+# Faqat HAQIQIY sessiya o'limi belgilari (tarmoq/timeout/"not found" — o'lim EMAS,
+# aks holda tirik akkaunt soxta o'lik bo'lib qoladi).
+_DEAD_HINTS = ("login_required", "logged_out", "logged out", "user_has_logged_out",
+               "checkpoint", "challenge_required", "not logged", "o'lik akkaunt",
+               "sessiyasi eskirgan")
 
 
 # ---------- Saqlash ----------
