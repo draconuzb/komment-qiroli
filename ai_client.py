@@ -136,19 +136,32 @@ def _one_mistral(caption: str, personality: str) -> str:
 
 def generate_one(caption: str, personality: str, provider: str = "claude") -> str:
     """Bitta akkaunt xususiyatiga mos BITTA komment (matn). Provayder bo'yicha."""
+    # Afzal provayder birinchi, keyin qolganlari ZAXIRA sifatida — biri 429/xato bersa
+    # keyingisiga avtomatik o'tadi (Groq -> Mistral -> Claude).
+    order = [provider] + [p for p in ("groq", "mistral", "claude") if p != provider]
+    last_err = None
+    for p in order:
+        try:
+            r = _try_one(p, caption, personality)
+        except Exception as e:
+            last_err = e
+            continue
+        if r:
+            return r
+    if last_err:
+        raise last_err
+    raise RuntimeError("Hech qanday AI provayder kaliti yo'q.")
+
+
+def _try_one(provider: str, caption: str, personality: str):
+    """Bitta provayderни sinaydi. Kaliti yo'q bo'lsa None (o'tkazib yuboriladi)."""
     if provider == "groq" and settings.get("groq_api_key"):
         return _one_groq(caption, personality)
     if provider == "mistral" and settings.get("mistral_api_key"):
         return _one_mistral(caption, personality)
-    # default / claude
-    if settings.get("anthropic_api_key"):
+    if provider == "claude" and settings.get("anthropic_api_key"):
         return claude_client.generate_one(caption, personality)
-    # claude kaliti yo'q bo'lsa — mavjud boshqasiga o'tamiz
-    if settings.get("groq_api_key"):
-        return _one_groq(caption, personality)
-    if settings.get("mistral_api_key"):
-        return _one_mistral(caption, personality)
-    raise RuntimeError("Hech qanday AI provayder kaliti yo'q.")
+    return None
 
 
 def generate_one_from_image(image_bytes: bytes, personality: str, media_type: str = "image/jpeg") -> str:

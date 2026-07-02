@@ -30,10 +30,14 @@ from telegram.ext import (
     filters,
 )
 
+import ai_client
 import config
 import instagram_client
 import prompts
 import queue_mgr
+import settings
+
+_AI_KEYMAP = {"groq": "groq_api_key", "mistral": "mistral_api_key", "claude": "anthropic_api_key"}
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -156,6 +160,7 @@ _HELP = (
     "1) O'zingizdan (ODDIY, proxysiz) akkauntga kiring — proxy orqali LOGIN qilmang!\n"
     "2) F12 → Application → Cookies → sessionid'ni oling.\n"
     "3) /add <username> <sessionid> — bot uni barqaror UZ proxy bilan qo'shadi.\n\n"
+    "🤖 AI: /ai — holat + afzalni tanlash · /setkey groq|mistral|claude <KALIT>\n\n"
     "Kommentlar oyna ichida tasodifiy, ≥3 daqiqa oraliq bilan joylanadi."
 )
 
@@ -272,6 +277,59 @@ async def queue_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     kb = InlineKeyboardMarkup([[_ibtn("🧹 Navbatni tozalash", "menu:clear", "danger")]])
     await update.message.reply_text(_fmt_queue(), reply_markup=kb)
+
+
+async def ai_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/ai — AI provayderlar holati + afzalни tanlash + kalit qo'shish yo'riqnomasi."""
+    if not _authorized(update):
+        return
+    have = {p["id"] for p in ai_client.available_providers()}
+    pref = settings.get("ai_provider") or "groq"
+
+    def line(pid, name):
+        mark = "🟢" if pid in have else "⚪"
+        star = " ⭐ afzal" if pid == pref else ""
+        return f"{mark} {name}{star}"
+
+    txt = (
+        "🤖 AI provayderlar\n\n"
+        f"{line('groq', 'Groq')}\n"
+        f"{line('mistral', 'Mistral')}\n"
+        f"{line('claude', 'Claude')}\n\n"
+        "🟢 = kalit bor · ⚪ = yo'q\n"
+        "Biri ishlamasa (429/xato) — avtomatik zaxiraga o'tadi.\n\n"
+        "Kalit qo'shish:\n/setkey groq <KALIT>\n/setkey mistral <KALIT>\n/setkey claude <KALIT>\n\n"
+        "Afzalni tanlash — pastdagi tugmalar:"
+    )
+    kb = InlineKeyboardMarkup([[
+        _ibtn("Groq", "menu:aip:groq", "primary"),
+        _ibtn("Mistral", "menu:aip:mistral", "primary"),
+        _ibtn("Claude", "menu:aip:claude", "primary"),
+    ]])
+    await update.message.reply_text(txt, reply_markup=kb)
+
+
+async def setkey_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/setkey <groq|mistral|claude> <KALIT> — AI kalitini saqlaydi."""
+    if not _authorized(update):
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Foydalanish:\n/setkey groq <KALIT>\n/setkey mistral <KALIT>\n/setkey claude <KALIT>")
+        return
+    prov = args[0].lower().strip()
+    field = _AI_KEYMAP.get(prov)
+    if not field:
+        await update.message.reply_text("Provayder: groq | mistral | claude")
+        return
+    key = " ".join(args[1:]).strip()
+    settings.update({field: key})
+    await update.message.reply_text(f"✅ {prov} kaliti saqlandi. /ai bilan tekshiring.")
+    try:
+        await update.message.delete()  # kalitli xabarni o'chiramiz (xavfsizlik)
+    except Exception:
+        pass
 
 
 async def proxy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -433,6 +491,10 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             instagram_client.set_personality(u, k)
             label = prompts.PERSONALITIES.get(k, {}).get("label", k)
             await q.edit_message_text(f"✅ @{u} xususiyati o'zgartirildi → {label}")
+        elif data.startswith("aip:"):
+            p = data[4:]
+            settings.update({"ai_provider": p})
+            await q.edit_message_text(f"✅ Afzal AI: {p}. (Ishlamasa avtomatik zaxiraga o'tadi.)")
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz
 
@@ -589,6 +651,8 @@ def main() -> None:
     app.add_handler(CommandHandler("proxy", proxy_cmd))
     app.add_handler(CommandHandler("add", add_cmd))
     app.add_handler(CommandHandler("foxyproxy", foxyproxy_cmd))
+    app.add_handler(CommandHandler("ai", ai_cmd))
+    app.add_handler(CommandHandler("setkey", setkey_cmd))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))

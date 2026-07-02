@@ -30,6 +30,8 @@ _DEFAULTS = {
     "schedule_gap_min": config.SCHEDULE_GAP_MIN,
     "schedule_window": config.SCHEDULE_WINDOW,
     "panel_password": config.PANEL_PASSWORD,
+    "ai_provider": os.getenv("AI_PROVIDER", "groq"),  # afzal AI (zaxira avto)
+    "keepalive_interval": int(os.getenv("KEEPALIVE_INTERVAL", "43200")),
 }
 
 _cache: dict | None = None

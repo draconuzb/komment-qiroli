@@ -187,7 +187,8 @@ def _do_post(task: dict) -> tuple[bool, str]:
 
         persona = instagram_client.get_personality(u)
         provs = ai_client.available_providers()
-        prov = provs[0]["id"] if provs else "claude"
+        # Afzal provayder (settings) — biri ishlamasa generate_one avto zaxiraga o'tadi.
+        prov = settings.get("ai_provider") or (provs[0]["id"] if provs else "groq")
         if caption:
             text = ai_client.generate_one(caption, persona, prov)
         elif thumb:
