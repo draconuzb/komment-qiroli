@@ -32,6 +32,7 @@ from telegram.ext import (
 
 import config
 import instagram_client
+import prompts
 import queue_mgr
 
 logging.basicConfig(
@@ -412,6 +413,26 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             else:
                 await q.edit_message_text(f"🗑 {len(removed)} o'lik akkaunt o'chirildi." +
                                           ("\n" + ", ".join("@" + u for u in removed) if removed else ""))
+        elif data == "persona":
+            accs = instagram_client.list_accounts()
+            if not accs:
+                await q.edit_message_text("Akkaunt yo'q.")
+            else:
+                rows = [[_ibtn(f"@{a['username']}", f"menu:pa:{a['username']}")] for a in accs[:40]]
+                await q.edit_message_text("🎭 Qaysi akkaunt xususiyatini o'zgartiramiz?",
+                                          reply_markup=InlineKeyboardMarkup(rows))
+        elif data.startswith("pa:"):
+            u = data[3:]
+            cur = instagram_client.get_personality(u)
+            rows = [[_ibtn(("✅ " if k == cur else "") + v["label"], f"menu:ps:{u}:{k}")]
+                    for k, v in prompts.PERSONALITIES.items()]
+            await q.edit_message_text(f"🎭 @{u} — xususiyat tanlang (hozir: {cur}):",
+                                      reply_markup=InlineKeyboardMarkup(rows))
+        elif data.startswith("ps:"):
+            _, u, k = data.split(":", 2)
+            instagram_client.set_personality(u, k)
+            label = prompts.PERSONALITIES.get(k, {}).get("label", k)
+            await q.edit_message_text(f"✅ @{u} xususiyati o'zgartirildi → {label}")
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz
 
@@ -499,10 +520,11 @@ async def on_private_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if text == B_ACCOUNTS:
-        kb = InlineKeyboardMarkup([[
-            _ibtn("🩺 Tekshirish", "menu:check", "primary"),
-            _ibtn("🗑 O'liklarni o'chir", "menu:removedead", "danger"),
-        ]])
+        kb = InlineKeyboardMarkup([
+            [_ibtn("🩺 Tekshirish", "menu:check", "primary"),
+             _ibtn("🗑 O'liklarni o'chir", "menu:removedead", "danger")],
+            [_ibtn("🎭 Xususiyat", "menu:persona")],
+        ])
         await update.message.reply_text(_fmt_status(), reply_markup=kb)
     elif text == B_QUEUE:
         kb = InlineKeyboardMarkup([[_ibtn("🧹 Navbatni tozalash", "menu:clear", "danger")]])

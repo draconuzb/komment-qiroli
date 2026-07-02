@@ -210,10 +210,39 @@ def _do_post(task: dict) -> tuple[bool, str]:
         msg = str(e) or e.__class__.__name__
         if any(h in msg.lower() for h in _DEAD_HINTS):
             try:
+                was = instagram_client.get_health(u).get("alive")
                 instagram_client.mark_dead(u)
+                if was is not False:  # tirik edi -> endi o'ldi: xabar beramiz
+                    notify_dead(u)
             except Exception:
                 pass
         return False, msg
+
+
+def notify_dead(username: str) -> None:
+    """Akkaunt HAQIQATAN o'lganda log kanalga ogohlantirish."""
+    _tg_log(f"🔴 @{username} sessiyasi o'ldi — ilova orqali QAYTA qo'shing.")
+
+
+def _keepalive_worker() -> None:
+    """Kuniga bir marta har akkauntga yengil faollik (check + auto-relogin) —
+    sessiya uzoq yashaydi, tushib qolса o'zini tiklaydi. Haqiqiy o'limda xabar beradi."""
+    time.sleep(150)  # app to'liq ko'tarilsin
+    while True:
+        try:
+            interval = int(settings.get("keepalive_interval") or 43200)  # 12 soat
+            for u in [a["username"] for a in instagram_client.list_accounts()]:
+                try:
+                    was = instagram_client.get_health(u).get("alive")
+                    alive = instagram_client.check_account(u)  # auto-heal + health yangilash
+                    if was is not False and not alive:
+                        notify_dead(u)
+                except Exception:
+                    pass
+                time.sleep(random.uniform(60, 150))  # akkauntlar orasida tabiiy oraliq
+            time.sleep(interval)
+        except Exception:
+            time.sleep(600)
 
 
 def _worker() -> None:
@@ -279,3 +308,4 @@ def start_worker() -> None:
         return
     _started = True
     threading.Thread(target=_worker, daemon=True).start()
+    threading.Thread(target=_keepalive_worker, daemon=True).start()  # avto keep-alive
