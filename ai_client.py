@@ -3,12 +3,48 @@
 Har bir provayder bir xil promptdan foydalanadi va {yumor, aqlli, bahsli} qaytaradi.
 """
 import json
+import time
 
 import settings
 import claude_client
 from prompts import SYSTEM_PROMPT, build_user_prompt, JSON_INSTRUCTION, build_persona_prompt
 
 _REQUIRED_KEYS = ("yumor", "aqlli", "bahsli")
+
+# Groq rate-limit (429) bo'lganda zaxira modellar (har birida alohida limit).
+_GROQ_FALLBACK_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
+
+
+def _is_rate_limit(e: Exception) -> bool:
+    m = str(e).lower()
+    return "429" in m or "rate limit" in m or "rate_limit" in m or "too many requests" in m
+
+
+def _groq_chat(caption: str, personality: str) -> str:
+    """Groq'ga so'rov: 429 bo'lsa kutib qayta urinadi, keyin zaxira modelga o'tadi."""
+    from groq import Groq
+    client = Groq(api_key=settings.get("groq_api_key"))
+    primary = settings.get("groq_model") or "llama-3.3-70b-versatile"
+    models = [primary] + [m for m in _GROQ_FALLBACK_MODELS if m != primary]
+    last_err = None
+    for model in models:
+        for attempt in range(2):
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": build_persona_prompt(caption, personality)},
+                    ],
+                )
+                return (resp.choices[0].message.content or "").strip().strip('"').strip()
+            except Exception as e:
+                last_err = e
+                if _is_rate_limit(e) and attempt == 0:
+                    time.sleep(25)   # limit tiklanishini kutamiz, keyin qayta
+                    continue
+                break  # boshqa xato yoki 2-urinish ham 429 -> keyingi modelga
+    raise last_err
 
 
 def available_providers() -> list[dict]:
@@ -83,16 +119,7 @@ def generate_comments(description: str, provider: str = "claude") -> dict:
 
 
 def _one_groq(caption: str, personality: str) -> str:
-    from groq import Groq
-    client = Groq(api_key=settings.get("groq_api_key"))
-    resp = client.chat.completions.create(
-        model=settings.get("groq_model"),
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_persona_prompt(caption, personality)},
-        ],
-    )
-    return (resp.choices[0].message.content or "").strip().strip('"').strip()
+    return _groq_chat(caption, personality)
 
 
 def _one_mistral(caption: str, personality: str) -> str:
