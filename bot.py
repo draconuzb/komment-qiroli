@@ -48,11 +48,22 @@ _IG_URL_RE = re.compile(r"https?://(www\.)?instagram\.com/\S+")
 _INTERNAL_URL = f"http://127.0.0.1:{os.getenv('PORT', '8000')}"
 
 
+def _admin_ids() -> set:
+    """.env dagi (statik) + settings dagi (dinamik, bot orqali) adminlar."""
+    ids = set(config.ALLOWED_TELEGRAM_IDS)
+    for x in str(settings.get("admin_ids") or "").split(","):
+        x = x.strip()
+        if x.isdigit():
+            ids.add(int(x))
+    return ids
+
+
 def _authorized(update: Update) -> bool:
-    if not config.ALLOWED_TELEGRAM_IDS:
-        return True
+    ids = _admin_ids()
+    if not ids:
+        return True  # hech kim belgilanmagan — ochiq (faqat lokal sinov uchun)
     user = update.effective_user
-    return bool(user and user.id in config.ALLOWED_TELEGRAM_IDS)
+    return bool(user and user.id in ids)
 
 
 # ---------- Navbatga qo'shish (web-app HTTP orqali) ----------
@@ -330,6 +341,52 @@ async def setkey_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.delete()  # kalitli xabarni o'chiramiz (xavfsizlik)
     except Exception:
         pass
+
+
+async def admins_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/admins — admin ro'yxati."""
+    if not _authorized(update):
+        return
+    ids = sorted(_admin_ids())
+    body = "\n".join(str(i) for i in ids) if ids else "(hammaga ochiq)"
+    await update.message.reply_text(
+        f"👤 Adminlar:\n{body}\n\n"
+        "Qo'shish: /addadmin <telegram_id>\nO'chirish: /deladmin <telegram_id>\n"
+        "(o'z ID'ingizni bilish: /myid)")
+
+
+async def myid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    u = update.effective_user
+    await update.message.reply_text(f"Sizning Telegram ID: {u.id}" if u else "?")
+
+
+async def addadmin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        return
+    if not context.args or not context.args[0].strip().isdigit():
+        await update.message.reply_text("Foydalanish: /addadmin <telegram_id>")
+        return
+    new_id = context.args[0].strip()
+    cur = [x.strip() for x in str(settings.get("admin_ids") or "").split(",") if x.strip()]
+    if new_id not in cur:
+        cur.append(new_id)
+    settings.update({"admin_ids": ",".join(cur)})
+    await update.message.reply_text(f"✅ Admin qo'shildi: {new_id}")
+
+
+async def deladmin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Foydalanish: /deladmin <telegram_id>")
+        return
+    rid = context.args[0].strip()
+    cur = [x.strip() for x in str(settings.get("admin_ids") or "").split(",")
+           if x.strip() and x.strip() != rid]
+    settings.update({"admin_ids": ",".join(cur)})
+    note = "" if not (int(rid) in config.ALLOWED_TELEGRAM_IDS if rid.isdigit() else False) \
+        else "\n⚠️ Bu ID .env da ham bor — u yerdan o'chmaydi."
+    await update.message.reply_text(f"✅ Admin o'chirildi: {rid}{note}")
 
 
 async def proxy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -653,6 +710,10 @@ def main() -> None:
     app.add_handler(CommandHandler("foxyproxy", foxyproxy_cmd))
     app.add_handler(CommandHandler("ai", ai_cmd))
     app.add_handler(CommandHandler("setkey", setkey_cmd))
+    app.add_handler(CommandHandler("admins", admins_cmd))
+    app.add_handler(CommandHandler("addadmin", addadmin_cmd))
+    app.add_handler(CommandHandler("deladmin", deladmin_cmd))
+    app.add_handler(CommandHandler("myid", myid_cmd))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))
