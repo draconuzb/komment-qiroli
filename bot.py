@@ -123,7 +123,7 @@ def _remove_dead():
         return None
 
 
-def _add_account_via_app(username: str, sessionid: str) -> str:
+def _add_account_via_app(username: str, sessionid: str) -> dict:
     r = requests.post(
         f"{_INTERNAL_URL}/api/hook/add-account",
         headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
@@ -136,7 +136,18 @@ def _add_account_via_app(username: str, sessionid: str) -> str:
         except ValueError:
             detail = r.text[:200]
         raise RuntimeError(detail)
-    return r.json().get("username", username)
+    d = r.json()
+    return {"username": d.get("username", username), "status": d.get("status", "added")}
+
+
+def _add_result_msg(res: dict) -> str:
+    u = res.get("username", "")
+    st = res.get("status")
+    if st == "exists_alive":
+        return f"ℹ️ @{u} allaqachon bor va TIRIK — o'zgartirilmadi."
+    if st == "replaced":
+        return f"✅ @{u} o'lik edi — qayta tiklandi (proxy bilan)."
+    return f"✅ @{u} qo'shildi — barqaror UZ proxy IP'da."
 
 
 def _channel_allowed(post) -> bool:
@@ -427,11 +438,11 @@ async def add_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"⏳ @{username} qo'shilyapti (proxy orqali)...")
     loop = asyncio.get_event_loop()
     try:
-        name = await loop.run_in_executor(None, lambda: _add_account_via_app(username, sessionid))
+        res = await loop.run_in_executor(None, lambda: _add_account_via_app(username, sessionid))
     except Exception as e:
         await update.message.reply_text(f"❌ Qo'shib bo'lmadi: {str(e)[:250]}")
         return
-    await update.message.reply_text(f"✅ @{name} qo'shildi — barqaror UZ proxy IP'da. Endi o'lmasligi kerak.")
+    await update.message.reply_text(_add_result_msg(res))
 
 
 _FOXY_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#9B59B6", "#E67E22",
@@ -594,12 +605,11 @@ async def _add_sessionid(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
     await update.message.reply_text(f"⏳ @{username} qo'shilyapti (proxy orqali)...", reply_markup=_kb())
     loop = asyncio.get_event_loop()
     try:
-        name = await loop.run_in_executor(None, lambda: _add_account_via_app(username, text.strip()))
+        res = await loop.run_in_executor(None, lambda: _add_account_via_app(username, text.strip()))
     except Exception as e:
         await update.message.reply_text(f"❌ Qo'shib bo'lmadi: {str(e)[:250]}", reply_markup=_kb())
         return
-    await update.message.reply_text(f"✅ @{name} qo'shildi — barqaror UZ proxy IP'da. Endi o'lmasligi kerak.",
-                                    reply_markup=_kb())
+    await update.message.reply_text(_add_result_msg(res), reply_markup=_kb())
 
 
 async def _do_enqueue_dm(update: Update, url: str) -> None:

@@ -158,10 +158,11 @@ def proxy_preview(username: str, session: str | None = Cookie(default=None)):
 def add_account(body: AddAccountBody, session: str | None = Cookie(default=None)):
     _check_auth(session)
     try:
-        username = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy, use_proxy=body.use_proxy, username_hint=body.username)
+        res = instagram_client.add_account_by_sessionid(body.sessionid, body.proxy, use_proxy=body.use_proxy, username_hint=body.username)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"ok": True, "username": username, "accounts": instagram_client.list_accounts()}
+    return {"ok": True, "username": res["username"], "status": res["status"],
+            "accounts": instagram_client.list_accounts()}
 
 
 class LoginAccountBody(BaseModel):
@@ -693,9 +694,9 @@ def hook_add_account(body: HookAddBody, x_webhook_token: str | None = Header(def
     """Token bilan sessionid orqali akkaunt qo'shish (Telegram bot uchun).
     username berilsa — proxy o'sha akkaunt sessiyasi bilan (brauzer IP'si bilan bir xil)."""
     _check_webhook(x_webhook_token or token)
-    username = instagram_client.add_account_by_sessionid(
+    res = instagram_client.add_account_by_sessionid(
         body.sessionid, use_proxy=body.use_proxy, username_hint=body.username)
-    return {"ok": True, "username": username}
+    return {"ok": True, "username": res["username"], "status": res["status"]}
 
 
 @app.post("/api/hook/check")
