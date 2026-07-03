@@ -702,14 +702,20 @@ def hook_add_account(body: HookAddBody, x_webhook_token: str | None = Header(def
 def hook_check(x_webhook_token: str | None = Header(default=None), token: str | None = None):
     """Token bilan barcha akkaunt sessiyasini tekshiradi (bot uchun, sinxron)."""
     _check_webhook(x_webhook_token or token)
-    results = []
-    for a in instagram_client.list_accounts():
-        u = a["username"]
+    import concurrent.futures as _cf
+    usernames = [a["username"] for a in instagram_client.list_accounts()]
+
+    def _chk(u):
         try:
-            alive = bool(instagram_client.check_account(u))
+            return u, bool(instagram_client.check_account(u, relogin=True))  # o'lganini tiklaydi
         except Exception:
-            alive = False
-        results.append({"username": u, "alive": alive})
+            return u, False
+
+    results = []
+    if usernames:
+        with _cf.ThreadPoolExecutor(max_workers=12) as ex:
+            for u, alive in ex.map(_chk, usernames):
+                results.append({"username": u, "alive": alive})
     return {"ok": True, "results": results,
             "alive": sum(1 for r in results if r["alive"]),
             "dead": sum(1 for r in results if not r["alive"])}

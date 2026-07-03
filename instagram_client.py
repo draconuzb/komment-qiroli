@@ -173,28 +173,30 @@ _AUTH_DEAD_HINTS = (
 )
 
 
-def check_account(username: str) -> bool:
-    """Sessiya tirikligini tekshiradi — soxta 'o'lik'ka qarshi mustahkam:
-    1) 2-urinishda sessionid orqali QAYTA ULANISHga harakat (o'z-o'zini tiklaydi);
-    2) faqat HAQIQIY auth-xato (login_required/checkpoint...) da 'o'lik' belgilaydi;
-    3) tarmoq/timeout/proxy xatosida 'o'lik' DEMAYDI — oldingi holatni saqlaydi."""
+def check_account(username: str, relogin: bool = True) -> bool:
+    """Sessiya tirikligini tekshiradi (TEZ, soxta 'o'lik'ka qarshi):
+    - faqat HAQIQIY auth-xato (login_required/checkpoint...) da 'o'lik';
+    - tarmoq/timeout xatosida 'o'lik' DEMAYDI (oldingi holat qoladi);
+    - relogin=True bo'lsa, auth-xato bo'lganda sessionid bilan 1 marta qayta ulanadi.
+    Bulk tekshiruv (bot tugmasi) relogin=False bilan chaqiradi — tez bo'lsin."""
     last_auth = False
     for attempt in range(2):
         try:
-            relogin = (attempt == 1)  # 2-urinishda sessionid bilan qayta kirishga urinadi
+            do_relogin = relogin and attempt == 1
             _run_timeout(
-                lambda: _with_session(username, lambda cl: cl.account_info(), relogin=relogin), 25)
+                lambda: _with_session(username, lambda cl: cl.account_info(), relogin=do_relogin), 15)
             _set_health(username, True)
             return True
         except Exception as e:
             msg = (str(e) or e.__class__.__name__).lower()
             last_auth = any(h in msg for h in _AUTH_DEAD_HINTS)
             if not last_auth:
-                time.sleep(2)  # tarmoq/timeout — qayta urinamiz
+                break        # tarmoq/timeout — tez chiqamiz, o'lik demaymiz
+            if not relogin:
+                break        # bulk-check — 1 urinish yetarli (tez)
     if last_auth:
-        _set_health(username, False)  # haqiqiy o'lim
+        _set_health(username, False)
         return False
-    # tarmoq xatosi — o'lik deb belgilamaymiz, oldingi holat qoladi
     return _load_health().get(username, {}).get("alive") is True
 
 
