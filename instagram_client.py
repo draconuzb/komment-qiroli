@@ -56,6 +56,21 @@ _HEALTH_FILE = os.path.join(config.DATA_DIR, "health.json")
 _clients: dict[str, Client] = {}      # username -> tirik Client (kesh)
 _last_ts: dict[str, float] = {}       # username -> oxirgi komment vaqti
 
+# Har akkaunt uchun ALOHIDA qulf — bir akkauntni bir vaqtda faqat BITTA thread ishlatadi.
+# instagrapi Client thread-safe emas: komment worker + keep-alive + parallel tekshiruv
+# bir akkauntni birga ishlatsa "to'qnashadi" va soxta login_required (o'lik) beradi.
+_account_locks: dict[str, "_threading.Lock"] = {}
+_locks_guard = _threading.Lock()
+
+
+def _account_lock(username: str):
+    with _locks_guard:
+        lk = _account_locks.get(username)
+        if lk is None:
+            lk = _threading.Lock()
+            _account_locks[username] = lk
+        return lk
+
 
 class RateLimitError(Exception):
     """Kunlik limit yoki tezlik chegarasiga yetilganda."""
@@ -625,21 +640,22 @@ def _with_session(username: str, fn, relogin: bool = True):
 
     relogin=False — qayta-login urinmaydi (TEZ). O'qish (public media) uchun ishlatiladi:
     login bo'roni 504 ga olib kelmasin."""
-    cl = _get_client(username)
-    try:
-        return fn(cl)
-    except _LOGIN_ERRORS:
-        if relogin:
-            sid = _load_sessionid(username)
-            if sid:
-                try:
-                    cl.login_by_sessionid(sid)
-                    cl.dump_settings(_session_path(username))
-                    return fn(cl)  # qayta urinish
-                except Exception:
-                    pass
-        _clients.pop(username, None)
-        raise NotLoggedInError(f"@{username} sessiyasi eskirgan. Qaytadan ulang.")
+    with _account_lock(username):  # to'qnashuvni oldini oladi (bir akkaunt = bir thread)
+        cl = _get_client(username)
+        try:
+            return fn(cl)
+        except _LOGIN_ERRORS:
+            if relogin:
+                sid = _load_sessionid(username)
+                if sid:
+                    try:
+                        cl.login_by_sessionid(sid)
+                        cl.dump_settings(_session_path(username))
+                        return fn(cl)  # qayta urinish
+                    except Exception:
+                        pass
+            _clients.pop(username, None)
+            raise NotLoggedInError(f"@{username} sessiyasi eskirgan. Qaytadan ulang.")
 
 
 # ---------- Media (video yoki rasm) ----------
