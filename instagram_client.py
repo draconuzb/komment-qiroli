@@ -85,9 +85,10 @@ class NotLoggedInError(Exception):
 def _new_client() -> Client:
     cl = Client()
     cl.delay_range = [1, 2]  # instagrapi ichki so'rovlari orasida tasodifiy kechikish
-    # Har bir HTTP so'rovga timeout — o'lik sessiya/sekin proxy 504 ga olib kelmasin.
+    # Har bir HTTP so'rovga timeout. Residential proxy SEKIN bo'lishi mumkin — 12s juda
+    # qisqa edi (yozish timeout bo'lardi). 25s: sekin proxyga chidaydi, lekin osilib qolmaydi.
     try:
-        cl.request_timeout = 12
+        cl.request_timeout = 25
     except Exception:
         pass
     return cl
@@ -199,7 +200,7 @@ def check_account(username: str, relogin: bool = True) -> bool:
         try:
             do_relogin = relogin and attempt == 1
             _run_timeout(
-                lambda: _with_session(username, lambda cl: cl.account_info(), relogin=do_relogin), 15)
+                lambda: _with_session(username, lambda cl: cl.account_info(), relogin=do_relogin), 22)
             _set_health(username, True)
             return True
         except Exception as e:
@@ -828,7 +829,7 @@ def post_comment(media_id: str, text: str, username: str) -> None:
         cl.media_comment(media_id, text)
 
     try:
-        _run_timeout(lambda: _with_session(username, _op), 30)
+        _run_timeout(lambda: _with_session(username, _op), 50)  # feed + komment (sekin proxy)
     except _cf.TimeoutError:
         raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
     _last_ts[username] = time.time()
@@ -841,7 +842,7 @@ def like_media(media_id: str, username: str) -> None:
     """Bitta akkauntdan postga like bosadi (yengil amal, kichik kechikish bilan)."""
     time.sleep(random.uniform(2, 6))
     try:
-        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_like(media_id)), 18)
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_like(media_id)), 30)
     except _cf.TimeoutError:
         raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
 
