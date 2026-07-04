@@ -211,10 +211,14 @@ def _do_post(task: dict) -> tuple[bool, str]:
         msg = str(e) or e.__class__.__name__
         if any(h in msg.lower() for h in _DEAD_HINTS):
             try:
+                # Komment (YOZISH) xato berdi — lekin akkaunt O'QISHda tirik bo'lishi mumkin
+                # (Instagram yozishga qattiqroq). Faqat READ tekshiruvi ham o'lса — HAQIQIY o'lim.
+                # Aks holda tirik qoldiramiz (bitta yozish xatosi butun akkauntni o'ldirmasin).
                 was = instagram_client.get_health(u).get("alive")
-                instagram_client.mark_dead(u)
-                if was is not False:  # tirik edi -> endi o'ldi: xabar beramiz
-                    notify_dead(u)
+                if not instagram_client.check_account(u, relogin=True):
+                    if was is not False:
+                        notify_dead(u)   # check_account allaqachon mark_dead qildi
+                # tirik bo'lsa: check_account health=True qildi — o'lik EMAS
             except Exception:
                 pass
         return False, msg
@@ -267,8 +271,18 @@ def _worker() -> None:
                     d = _load()
                     for t in d["tasks"]:
                         if t["id"] == task["id"]:
-                            t["status"] = "done" if ok else "failed"
-                            t["error"] = err
+                            # Qayta urinsa bo'ladimi? (tirik akkaunt, vaqtinchalik xato)
+                            retryable = (not ok) and not any(x in (err or "").lower() for x in (
+                                "allaqachon", "o'lik akkaunt", "matni ham, rasm", "kunlik limit"))
+                            tries = t.get("tries", 0)
+                            if retryable and tries < 2:
+                                t["status"] = "pending"          # qayta navbatga
+                                t["tries"] = tries + 1
+                                t["run_at"] = time.time() + random.uniform(600, 1200)  # 10-20 daq keyin
+                                t["error"] = f"(qayta {tries + 1}/2) {err}"
+                            else:
+                                t["status"] = "done" if ok else "failed"
+                                t["error"] = err
                             break
                     d["last_post"] = time.time()
                     # Batch tugadimi? (shu link bo'yicha boshqa pending qolmaganmi)

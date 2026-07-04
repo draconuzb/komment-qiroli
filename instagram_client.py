@@ -817,8 +817,18 @@ def post_comment(media_id: str, text: str, username: str) -> None:
         raise RateLimitError(f"@{username}: kunlik limit ({daily_limit}) tugadi.")
 
     time.sleep(random.uniform(delay_min, delay_max))
+
+    def _op(cl):
+        # Yozishdan oldin yengil o'qish (feed) — sessiyani YOZISHga tayyorlaydi.
+        # (Instagram yozishga qattiqroq; feed o'qish sessiya holatini yangilaydi.)
+        try:
+            cl.get_timeline_feed()
+        except Exception:
+            pass
+        cl.media_comment(media_id, text)
+
     try:
-        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_comment(media_id, text)), 22)
+        _run_timeout(lambda: _with_session(username, _op), 30)
     except _cf.TimeoutError:
         raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
     _last_ts[username] = time.time()
