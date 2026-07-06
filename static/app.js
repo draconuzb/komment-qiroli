@@ -111,6 +111,7 @@ async function loadStatus() {
   renderAccounts(state.accounts);
   renderProviders(s.providers || [], s.default_provider);
   renderPickAccounts(state.accounts);
+  applyProxyMode(!!s.proxy_auto);
   loadModems();
 
   const n = state.accounts.length;
@@ -214,6 +215,33 @@ function refreshAccountsUI() {
   $("pill-accounts").classList.toggle("online", state.accounts.length > 0);
   animateCount($("stat-accounts"), state.accounts.length);
   animateCount($("stat-today"), state.accounts.reduce((a, x) => a + (x.daily_count || 0), 0));
+}
+
+function applyProxyMode(on) {
+  const t = $("proxy-mode-toggle"), lbl = $("proxy-mode-label");
+  const badge = $("add-mode-badge"), chk = $("sessionid-useproxy");
+  if (t) t.checked = on;
+  if (lbl) lbl.textContent = on ? "🛡 Proxy rejimi" : "📵 Proxysiz rejim";
+  if (chk) chk.checked = on;
+  if (badge) {
+    badge.textContent = on
+      ? "🛡 Proxy rejim — har akkaunt UZ proxy IP'sida qo'shiladi."
+      : "📵 Proxysiz rejim — akkaunt mini-PC IP'sida ishlaydi. Cookie'ni SHU mini-PC brauzerida oling — shunda omon qoladi.";
+    badge.className = "mode-badge " + (on ? "mode-proxy" : "mode-noproxy");
+  }
+}
+
+async function toggleProxyMode() {
+  const on = $("proxy-mode-toggle").checked;
+  try {
+    const r = await api("/api/proxy-mode", { method: "POST", body: JSON.stringify({ proxy_auto: on }) });
+    applyProxyMode(!!r.proxy_auto);
+    toast(r.proxy_auto ? "🛡 Proxy YOQILDI" : "📵 Proxysiz rejim yoqildi", "ok");
+  } catch (e) {
+    if (e.status === 401) { location.reload(); return; }
+    applyProxyMode(!on);
+    toast(e.message, "err");
+  }
 }
 
 async function doAddAccount() {
@@ -931,6 +959,7 @@ if ($("queue-refresh")) $("queue-refresh").onclick = loadQueue;
 if ($("queue-clear")) $("queue-clear").onclick = doClearQueue;
 if ($("queue-accel")) $("queue-accel").onclick = doAccelerate;
 $("check-all-btn").onclick = doCheckAll;
+if ($("proxy-mode-toggle")) $("proxy-mode-toggle").addEventListener("change", toggleProxyMode);
 if ($("warmup-all-btn")) $("warmup-all-btn").onclick = doWarmupAll;  // warm-up olib tashlandi (ixtiyoriy)
 $("view-btn").onclick = () => doView($("view-btn"));
 $("like-btn").onclick = () => doLike($("like-btn"));

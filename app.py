@@ -95,7 +95,19 @@ def status(session: str | None = Cookie(default=None)):
         "default_provider": providers[0]["id"] if providers else None,
         "accounts": instagram_client.list_accounts(),
         "daily_limit": settings.get("max_comments_per_day"),
+        "proxy_auto": bool(settings.get("proxy_auto")),
     }
+
+
+class ProxyModeBody(BaseModel):
+    proxy_auto: bool
+
+
+@app.post("/api/proxy-mode")
+def set_proxy_mode(body: ProxyModeBody, session: str | None = Cookie(default=None)):
+    _check_auth(session)
+    settings.update({"proxy_auto": body.proxy_auto})
+    return {"ok": True, "proxy_auto": bool(settings.get("proxy_auto"))}
 
 
 # ---------- Sozlamalar ----------

@@ -235,6 +235,18 @@ body {
 .proxy-check input { width: 16px; height: 16px; cursor: pointer; }
 .proxy-preview { margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--surface-2, rgba(120,120,140,.12)); border: 1px solid var(--border, rgba(120,120,140,.25)); font-size: 12px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
 
+/* Proxy rejim switch + badge */
+.switch-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; margin-left: auto; }
+.switch { position: relative; display: inline-block; width: 42px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider { position: absolute; inset: 0; background: rgba(120,120,140,.35); border-radius: 24px; transition: .2s; }
+.switch .slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.switch input:checked + .slider { background: #3498db; }
+.switch input:checked + .slider::before { transform: translateX(18px); }
+.mode-badge { margin: 8px 0 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+.mode-badge.mode-noproxy { background: rgba(230,126,34,.14); border: 1px solid rgba(230,126,34,.4); color: var(--text-1); }
+.mode-badge.mode-proxy { background: rgba(52,152,219,.14); border: 1px solid rgba(52,152,219,.4); color: var(--text-1); }
+
 /* ============ Forms / inputs ============ */
 textarea, .ig-connect input, #provider-select, .field input {
   width: 100%; padding: 13px 15px; border: 1px solid var(--border); border-radius: var(--radius-sm);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Komment Qiroli — Boshqaruv paneli</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260701c" />
+  <link rel="stylesheet" href="/static/style.css?v=20260706a" />
 </head>
 <body>
   <div class="bg-blobs" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -84,16 +84,19 @@
 
         <div class="accounts-actions">
           <button class="btn btn--ghost btn--sm" id="check-all-btn">🩺 Hammasini tekshir</button>
+          <label class="switch-row" title="Yangi akkauntlar proxy bilan yoki proxysiz (mini-PC IP) qo'shilsin">
+            <span id="proxy-mode-label">🛡 Proxy rejimi</span>
+            <span class="switch"><input type="checkbox" id="proxy-mode-toggle" /><span class="slider"></span></span>
+          </label>
         </div>
 
-        <details class="howto">
-          <summary>+ Akkaunt qo'shish (sessionid orqali — brauzer proxy bilan)</summary>
+        <details class="howto" open>
+          <summary>➕ Akkaunt qo'shish (sessionid orqali)</summary>
+          <div id="add-mode-badge" class="mode-badge"></div>
           <ol>
-            <li>Username kiriting → <strong>🔑 Brauzer uchun proxy ko'rsat</strong> bosing.</li>
-            <li>Chiqqan host/port/login/parolni brauzer <strong>FoxyProxy</strong> kengaytmasiga qo'ying va yoqing.</li>
-            <li>O'sha brauzerda <strong>instagram.com</strong>ga shu akkaunt bilan kiring.</li>
+            <li><strong>Shu mini-PC brauzerida</strong> <strong>instagram.com</strong>ga akkaunt bilan kiring (proxysiz rejimda — mini-PC IP'sida).</li>
             <li><kbd>F12</kbd> → <strong>Application</strong> → <strong>Cookies</strong> → <code>sessionid</code> qiymatini nusxalang.</li>
-            <li>Pastga: username + sessionid joylang, <strong>🛡 Proxy ☑️</strong> belgilangan holda <strong>Qo'shish</strong>.</li>
+            <li>Pastga: sessionid (va username) joylang → <strong>Qo'shish</strong>.</li>
           </ol>
           <div class="ig-connect">
             <input type="text" id="sessionid-username" placeholder="Username (@siz) — proxy mosligi uchun MUHIM" autocomplete="off" />
@@ -305,6 +308,6 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=20260701c"></script>
+  <script src="/static/app.js?v=20260706a"></script>
 </body>
 </html>
