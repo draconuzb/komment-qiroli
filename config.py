@@ -57,7 +57,7 @@ IG_PASSWORD = os.getenv("IG_PASSWORD", "")
 IG_SESSION_FILE = os.getenv("IG_SESSION_FILE", "ig_session.json")
 
 # Rate-limit / xavfsizlik
-MIN_SECONDS_BETWEEN_COMMENTS = int(os.getenv("MIN_SECONDS_BETWEEN_COMMENTS", "90"))
+MIN_SECONDS_BETWEEN_COMMENTS = int(os.getenv("MIN_SECONDS_BETWEEN_COMMENTS", "300"))
 RANDOM_DELAY_MIN = float(os.getenv("RANDOM_DELAY_MIN", "4"))
 RANDOM_DELAY_MAX = float(os.getenv("RANDOM_DELAY_MAX", "12"))
 MAX_COMMENTS_PER_DAY = int(os.getenv("MAX_COMMENTS_PER_DAY", "30"))
@@ -69,7 +69,7 @@ ACCOUNT_GAP_MAX = int(os.getenv("ACCOUNT_GAP_MAX", "300"))   # 5 daqiqa
 # gap_min — istalgan 2 komment orasidagi MINIMAL oraliq (butun tizim bo'ylab).
 # window — akkauntlar shu OYNA ichiga tasodifiy joylashtiriladi.
 SCHEDULE_GAP_MIN = int(os.getenv("SCHEDULE_GAP_MIN", "180"))      # 2 daqiqa (min floor; "hoziroq jo'natish" 2-4 daq uchun)
-SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "172800"))     # 2 kun
+SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "10800"))     # 2 kun
 
 # Web-panel
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.

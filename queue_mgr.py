@@ -81,12 +81,14 @@ def enqueue(url: str, media_id: str, usernames: list[str], like: bool = True,
     """Akkauntlarni oynaga tasodifiy, >=gap_min oraliq bilan rejalashtiradi.
     source — qaysi manba kanaldan kelgani (log uchun). Qaytaradi: {queued, first_at, last_at}."""
     gap_min = int(settings.get("schedule_gap_min") or 180)
-    window = int(settings.get("schedule_window") or 172800)
+    window = int(settings.get("schedule_window") or 10800)
     # Takror himoyasi: shu media'ga ALLAQACHON komment yozgan akkauntlarni qo'shmaymiz.
     if media_id:
         usernames = [u for u in usernames if not history.already_commented(media_id, u)]
+    # YOZa olmaydigan (write-dead) akkauntlarni o'tkazamiz — behuda urinish/relogin yo'q.
+    usernames = [u for u in usernames if not instagram_client.is_write_dead(u)]
     if not usernames:
-        _tg_log(f"📥 [{source or 'panel'}] link — barcha akkaunt allaqachon yozgan, o'tkazildi.\n{url}")
+        _tg_log(f"📥 [{source or 'panel'}] link — yoza oladigan akkaunt yo'q (yoki hammasi yozgan).\n{url}")
         return {"queued": 0, "first_at": 0, "last_at": 0}
 
     batch_id = secrets.token_urlsafe(6)
@@ -176,8 +178,8 @@ def accelerate(gap_min: float = 120, gap_max: float = 240) -> int:
 def _do_post(task: dict) -> tuple[bool, str]:
     u = task["username"]
     try:
-        if instagram_client.is_dead(u):
-            return False, "o'lik akkaunt (o'tkazib yuborildi)"
+        if instagram_client.is_write_dead(u):
+            return False, "yoza olmaydigan akkaunt (o'tkazildi)"
         media_id = task.get("media_id") or ""
         # Caption/rasmni post vaqtida olamiz (yangi, og:meta — xavfsiz).
         mid, caption, thumb = instagram_client.fetch_media(task["url"])
@@ -199,6 +201,7 @@ def _do_post(task: dict) -> tuple[bool, str]:
             return False, "post matni ham, rasm ham yo'q"
 
         instagram_client.post_comment(media_id, text, u)
+        instagram_client.set_write_status(u, True)  # ✍️ YOZDI — ishlaydi
         history.add(media_id, persona, text, task["url"], u)
         if task.get("like") and not history.already_liked(media_id, u):
             try:
@@ -209,16 +212,14 @@ def _do_post(task: dict) -> tuple[bool, str]:
         return True, ""
     except Exception as e:
         msg = str(e) or e.__class__.__name__
+        # Yozishда auth-xato (login_required...) → akkaunt YOZa olmaydi: write-dead.
+        # (Timeout/tarmoq/rate-limit — write-dead EMAS, qayta uriniladi.)
         if any(h in msg.lower() for h in _DEAD_HINTS):
             try:
-                # Komment (YOZISH) xato berdi — lekin akkaunt O'QISHda tirik bo'lishi mumkin
-                # (Instagram yozishga qattiqroq). Faqat READ tekshiruvi ham o'lса — HAQIQIY o'lim.
-                # Aks holda tirik qoldiramiz (bitta yozish xatosi butun akkauntni o'ldirmasin).
-                was = instagram_client.get_health(u).get("alive")
-                if not instagram_client.check_account(u, relogin=True):
-                    if was is not False:
-                        notify_dead(u)   # check_account allaqachon mark_dead qildi
-                # tirik bo'lsa: check_account health=True qildi — o'lik EMAS
+                was_ok = instagram_client.get_write_status(u).get("ok")
+                instagram_client.set_write_status(u, False)   # ✍️❌ yoza olmaydi
+                if was_ok is not False:  # ilgari ishlayotgan edi — endi tushdi: xabar
+                    _tg_log(f"⚠️ @{u} yoza olmayapti (login_required) — mini-PC'da qayta qo'shing.")
             except Exception:
                 pass
         return False, msg

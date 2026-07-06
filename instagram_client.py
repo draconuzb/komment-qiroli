@@ -183,6 +183,46 @@ def mark_dead(username: str) -> None:
     _set_health(username, False)
 
 
+# ---------- YOZISH holati (write-status) — read-health'dan alohida ----------
+# read-health (account_info) tirik desa ham, akkaunt komment YOZa olmasligi mumkin
+# (Instagram yozishga qattiqroq). Shuning uchun HAQIQIY yozish natijasini alohida saqlaymiz.
+_WRITE_FILE = os.path.join(config.DATA_DIR, "write_status.json")
+
+
+def _load_write() -> dict:
+    if os.path.exists(_WRITE_FILE):
+        try:
+            with open(_WRITE_FILE, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def set_write_status(username: str, ok: bool) -> None:
+    d = _load_write()
+    d[username] = {"ok": bool(ok), "at": int(time.time())}
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    with open(_WRITE_FILE, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+
+
+def get_write_status(username: str) -> dict:
+    return _load_write().get(username, {"ok": None, "at": 0})
+
+
+def is_write_dead(username: str) -> bool:
+    """Oxirgi yozish urinishi auth-xato bilan tushganmi (komment bermaymiz)."""
+    return _load_write().get(username, {}).get("ok") is False
+
+
+def clear_write_status(username: str) -> None:
+    d = _load_write()
+    if d.pop(username, None) is not None:
+        with open(_WRITE_FILE, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+
+
 _AUTH_DEAD_HINTS = (
     "login_required", "logged out", "logged_out", "user_has_logged_out",
     "checkpoint", "challenge_required", "not logged", "bad_password", "csrf",
@@ -471,7 +511,8 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
 
     _clients.pop(username, None)  # eski klientni tashlaymiz (yangi cookie yuklansin)
     _clients[username] = cl
-    _set_health(username, True)  # muvaffaqiyatli — darrov TIRIK
+    _set_health(username, True)   # muvaffaqiyatli — darrov TIRIK
+    clear_write_status(username)  # yangi cookie — yozish holatini qayta sinaymiz
     return {"username": username, "status": "replaced" if existing else "added"}
 
 
@@ -619,6 +660,7 @@ def list_accounts() -> list[dict]:
             "proxy": proxy_display(get_proxy(u)),
             "personality": get_personality(u),
             "health": get_health(u),
+            "write": get_write_status(u),   # ✍️ yozish holati (haqiqiy komment natijasi)
         }
         for u in _load_accounts()
     ]

@@ -235,12 +235,13 @@ def _fmt_status() -> str:
     accs = instagram_client.list_accounts()
     if not accs:
         return "📭 Hech qanday akkaunt ulanmagan.\nPanel orqali akkaunt qo'shing."
-    alive = sum(1 for a in accs if (a.get("health") or {}).get("alive") is True)
-    dead = sum(1 for a in accs if (a.get("health") or {}).get("alive") is False)
-    lines = [f"📊 Akkauntlar: {len(accs)}   🟢 {alive}   🔴 {dead}\n"]
+    writes = sum(1 for a in accs if (a.get("write") or {}).get("ok") is True)
+    nowrites = sum(1 for a in accs if (a.get("write") or {}).get("ok") is False)
+    lines = [f"📊 Akkauntlar: {len(accs)}   ✍️ yozadi {writes}   🚫 yozmaydi {nowrites}\n"
+             "(✍️=komment yozgan · 🚫=yoza olmadi · ⚪=hali sinalmagan)\n"]
     for a in accs[:40]:
-        h = (a.get("health") or {}).get("alive")
-        ic = "🟢" if h is True else "🔴" if h is False else "⚪"
+        w = (a.get("write") or {}).get("ok")
+        ic = "✍️" if w is True else "🚫" if w is False else "⚪"
         lines.append(f"{ic} @{a['username']} · {a.get('personality', '')} · {a['daily_count']}/{a['daily_limit']}")
     if len(accs) > 40:
         lines.append(f"... va yana {len(accs) - 40} ta")
