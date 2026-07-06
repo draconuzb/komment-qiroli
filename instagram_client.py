@@ -450,26 +450,26 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
 
     accounts = _load_accounts()
     existing = username in accounts
-    was_alive = get_health(username).get("alive") is True
 
-    # Allaqachon bor VA tirik — ustiga qo'shmaymiz, eski sessiyaga TEGMAYMIZ.
-    if existing and was_alive:
-        return {"username": username, "status": "exists_alive"}
-
-    # Yangi yoki O'LIK — sessiyani yozamiz (o'lik o'rniga tiklanadi).
+    # Sessiyani DOIM yozamiz — qayta qo'shish = YANGI cookie bilan ALMASHTIRISH
+    # (eski, ishlamaydigan sessiya o'rniga yangisi). Dublikat bo'lmaydi.
     os.makedirs(_SESSIONS_DIR, exist_ok=True)
     cl.dump_settings(_session_path(username))
     _save_sessionid(username, sessionid)  # auto-reconnect uchun saqlaymiz
+
+    # Proxy: bor bo'lsa saqlaymiz; PROXYSIZ rejimda esa eski proxyni ham TOZALAYMIZ.
+    proxies = _load_proxies()
     if proxy:
-        proxies = _load_proxies()
         proxies[username] = proxy
-        _save_proxies(proxies)
+    else:
+        proxies.pop(username, None)
+    _save_proxies(proxies)
 
     if not existing:
         accounts.append(username)
         _save_accounts(accounts)
 
-    _clients.pop(username, None)  # eski (o'lik) klientni tashlaymiz
+    _clients.pop(username, None)  # eski klientni tashlaymiz (yangi cookie yuklansin)
     _clients[username] = cl
     _set_health(username, True)  # muvaffaqiyatli — darrov TIRIK
     return {"username": username, "status": "replaced" if existing else "added"}
