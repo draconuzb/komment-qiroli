@@ -88,7 +88,7 @@ def _new_client() -> Client:
     # Har bir HTTP so'rovga timeout. Residential proxy SEKIN bo'lishi mumkin — 12s juda
     # qisqa edi (yozish timeout bo'lardi). 25s: sekin proxyga chidaydi, lekin osilib qolmaydi.
     try:
-        cl.request_timeout = 25
+        cl.request_timeout = 12
     except Exception:
         pass
     return cl
@@ -200,7 +200,7 @@ def check_account(username: str, relogin: bool = True) -> bool:
         try:
             do_relogin = relogin and attempt == 1
             _run_timeout(
-                lambda: _with_session(username, lambda cl: cl.account_info(), relogin=do_relogin), 22)
+                lambda: _with_session(username, lambda cl: cl.account_info(), relogin=do_relogin), 15)
             _set_health(username, True)
             return True
         except Exception as e:
@@ -818,18 +818,8 @@ def post_comment(media_id: str, text: str, username: str) -> None:
         raise RateLimitError(f"@{username}: kunlik limit ({daily_limit}) tugadi.")
 
     time.sleep(random.uniform(delay_min, delay_max))
-
-    def _op(cl):
-        # Yozishdan oldin yengil o'qish (feed) — sessiyani YOZISHga tayyorlaydi.
-        # (Instagram yozishga qattiqroq; feed o'qish sessiya holatini yangilaydi.)
-        try:
-            cl.get_timeline_feed()
-        except Exception:
-            pass
-        cl.media_comment(media_id, text)
-
     try:
-        _run_timeout(lambda: _with_session(username, _op), 50)  # feed + komment (sekin proxy)
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_comment(media_id, text)), 22)
     except _cf.TimeoutError:
         raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
     _last_ts[username] = time.time()
@@ -842,7 +832,7 @@ def like_media(media_id: str, username: str) -> None:
     """Bitta akkauntdan postga like bosadi (yengil amal, kichik kechikish bilan)."""
     time.sleep(random.uniform(2, 6))
     try:
-        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_like(media_id)), 30)
+        _run_timeout(lambda: _with_session(username, lambda cl: cl.media_like(media_id)), 18)
     except _cf.TimeoutError:
         raise NotLoggedInError(f"@{username}: javob bermadi (sessiya o'lik yoki sekin). Qaytadan ulang.")
 
