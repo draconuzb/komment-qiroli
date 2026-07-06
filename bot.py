@@ -123,11 +123,14 @@ def _remove_dead():
         return None
 
 
-def _add_account_via_app(username: str, sessionid: str) -> dict:
+def _add_account_via_app(username: str, sessionid: str, use_proxy=None) -> dict:
+    body = {"username": username, "sessionid": sessionid}
+    if use_proxy is not None:
+        body["use_proxy"] = bool(use_proxy)
     r = requests.post(
         f"{_INTERNAL_URL}/api/hook/add-account",
         headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
-        json={"username": username, "sessionid": sessionid},  # use_proxy -> settings.proxy_auto
+        json=body,
         timeout=120,
     )
     if not r.ok:
@@ -588,6 +591,27 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif data == "proxyoff":
             settings.update({"proxy_auto": False})
             await q.edit_message_text("✅ Proxy O'CHIRILDI — yangi akkauntlar PROXYSIZ (mini-PC IP) qo'shiladi.")
+        elif data.startswith("addp:"):
+            use_proxy = data == "addp:1"
+            username = context.user_data.pop("add_user", "")
+            sid = context.user_data.pop("add_sid", "")
+            if not username or not sid:
+                await q.edit_message_text("Ma'lumot yo'q — /start bosib qaytadan boshlang.")
+                return
+            await q.edit_message_text(f"⏳ @{username} qo'shilyapti ({'proxy bilan' if use_proxy else 'proxysiz'})...")
+            try:
+                res = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: _add_account_via_app(username, sid, use_proxy))
+            except Exception as e:
+                await q.edit_message_text(f"❌ Qo'shib bo'lmadi: {str(e)[:200]}")
+                return
+            mode = "proxy bilan" if use_proxy else "proxysiz (mini-PC IP)"
+            st = res.get("status")
+            u = res.get("username", username)
+            if st == "exists_alive":
+                await q.edit_message_text(f"ℹ️ @{u} allaqachon bor va TIRIK.")
+            else:
+                await q.edit_message_text(f"✅ @{u} qo'shildi — {mode}.")
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz
 
@@ -614,11 +638,12 @@ async def _add_username(update: Update, context: ContextTypes.DEFAULT_TYPE, text
     context.user_data["add_state"] = _ADD_SID
     await update.message.reply_text(
         f"➕ @{username}\n\n"
-        f"⚠️ Proxy orqali LOGIN QILMANG — Instagram bloklaydi. Oddiy kiring:\n\n"
-        f"1) O'zingizning telefon/brauzeringizda (ODDIY, proxysiz) @{username} ga kiring.\n"
-        f"2) F12 → Application → Cookies → instagram.com → sessionid'ni nusxalang.\n"
-        f"3) Shu sessionid'ni shu yerga yuboring.\n\n"
-        f"Men uni avtomatik BARQAROR UZ proxy bilan qo'shaman (o'zingiz proxy sozlashingiz shart emas).",
+        f"1) Instagram'ga kiring va sessionid'ni oling:\n"
+        f"   F12 → Application → Cookies → instagram.com → sessionid.\n"
+        f"2) Shu sessionid'ni shu yerga yuboring.\n\n"
+        f"💡 Cookie O'LMASLIGI uchun: proxysiz ishlatmoqchi bo'lsangiz — cookie'ni "
+        f"MINI-PC brauzerida oling; proxy bilan bo'lsa — istalgan joydan.\n"
+        f"Keyingi qadamda proxy/proxysizni tanlaysiz.",
         reply_markup=_kb_cancel(),
     )
 
@@ -626,15 +651,17 @@ async def _add_username(update: Update, context: ContextTypes.DEFAULT_TYPE, text
 async def _add_sessionid(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
     username = context.user_data.get("add_user", "")
     context.user_data.pop("add_state", None)
-    context.user_data.pop("add_user", None)
-    await update.message.reply_text(f"⏳ @{username} qo'shilyapti (proxy orqali)...", reply_markup=_kb())
-    loop = asyncio.get_event_loop()
-    try:
-        res = await loop.run_in_executor(None, lambda: _add_account_via_app(username, text.strip()))
-    except Exception as e:
-        await update.message.reply_text(f"❌ Qo'shib bo'lmadi: {str(e)[:250]}", reply_markup=_kb())
-        return
-    await update.message.reply_text(_add_result_msg(res), reply_markup=_kb())
+    context.user_data["add_sid"] = text.strip()   # sessionid'ni saqlaymiz
+    kb = InlineKeyboardMarkup([[
+        _ibtn("🛡 Proxy bilan", "menu:addp:1", "primary"),
+        _ibtn("📵 Proxysiz", "menu:addp:0", "success"),
+    ]])
+    await update.message.reply_text(
+        f"@{username} — qanday qo'shamiz?\n\n"
+        "🛡 Proxy bilan — UZ proxy IP'da.\n"
+        "📵 Proxysiz — mini-PC IP'da (cookie SHU mini-PC brauzerida olingan bo'lsa — yozadi).\n\n"
+        "Ikkalasini ham ishlatishingiz mumkin — har akkaunt uchun alohida tanlang.",
+        reply_markup=kb)
 
 
 async def _do_enqueue_dm(update: Update, url: str) -> None:
