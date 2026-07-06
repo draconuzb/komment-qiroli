@@ -127,7 +127,7 @@ def _add_account_via_app(username: str, sessionid: str) -> dict:
     r = requests.post(
         f"{_INTERNAL_URL}/api/hook/add-account",
         headers={"X-Webhook-Token": config.WEBHOOK_TOKEN},
-        json={"username": username, "sessionid": sessionid, "use_proxy": True},
+        json={"username": username, "sessionid": sessionid},  # use_proxy -> settings.proxy_auto
         timeout=120,
     )
     if not r.ok:
@@ -143,11 +143,12 @@ def _add_account_via_app(username: str, sessionid: str) -> dict:
 def _add_result_msg(res: dict) -> str:
     u = res.get("username", "")
     st = res.get("status")
+    mode = "UZ proxy" if settings.get("proxy_auto") else "mini-PC IP (proxysiz)"
     if st == "exists_alive":
         return f"ℹ️ @{u} allaqachon bor va TIRIK — o'zgartirilmadi."
     if st == "replaced":
-        return f"✅ @{u} o'lik edi — qayta tiklandi (proxy bilan)."
-    return f"✅ @{u} qo'shildi — barqaror UZ proxy IP'da."
+        return f"✅ @{u} o'lik edi — qayta tiklandi ({mode})."
+    return f"✅ @{u} qo'shildi — {mode}."
 
 
 def _channel_allowed(post) -> bool:
@@ -352,6 +353,23 @@ async def setkey_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.delete()  # kalitli xabarni o'chiramiz (xavfsizlik)
     except Exception:
         pass
+
+
+async def proxymode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/proxymode — proxy holati + yoqish/o'chirish tugmalari."""
+    if not _authorized(update):
+        return
+    on = bool(settings.get("proxy_auto"))
+    kb = InlineKeyboardMarkup([[
+        _ibtn("🛡 Proxy YOQISH", "menu:proxyon", "success"),
+        _ibtn("📵 Proxysiz", "menu:proxyoff", "danger"),
+    ]])
+    await update.message.reply_text(
+        f"🛡 Proxy rejimi: {'YONIQ (UZ proxy)' if on else 'OCHIQ (proxysiz, mini-PC IP)'}\n\n"
+        "Bu yangi qo'shiladigan akkauntlarga ta'sir qiladi:\n"
+        "• YONIQ — har akkaunt UZ proxy IP'da.\n"
+        "• Proxysiz — akkaunt mini-PC IP'sida (cookie shu IP'da olingan bo'lsa yaxshi).",
+        reply_markup=kb)
 
 
 async def admins_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -563,6 +581,12 @@ async def on_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             p = data[4:]
             settings.update({"ai_provider": p})
             await q.edit_message_text(f"✅ Afzal AI: {p}. (Ishlamasa avtomatik zaxiraga o'tadi.)")
+        elif data == "proxyon":
+            settings.update({"proxy_auto": True})
+            await q.edit_message_text("✅ Proxy YOQILDI — yangi akkauntlar UZ proxy IP'da qo'shiladi.")
+        elif data == "proxyoff":
+            settings.update({"proxy_auto": False})
+            await q.edit_message_text("✅ Proxy O'CHIRILDI — yangi akkauntlar PROXYSIZ (mini-PC IP) qo'shiladi.")
     except Exception:
         pass  # "message not modified" kabi xatolarni yutamiz
 
@@ -720,6 +744,7 @@ def main() -> None:
     app.add_handler(CommandHandler("foxyproxy", foxyproxy_cmd))
     app.add_handler(CommandHandler("ai", ai_cmd))
     app.add_handler(CommandHandler("setkey", setkey_cmd))
+    app.add_handler(CommandHandler("proxymode", proxymode_cmd))
     app.add_handler(CommandHandler("admins", admins_cmd))
     app.add_handler(CommandHandler("addadmin", addadmin_cmd))
     app.add_handler(CommandHandler("deladmin", deladmin_cmd))

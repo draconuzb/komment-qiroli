@@ -686,7 +686,7 @@ def hook_accelerate(x_webhook_token: str | None = Header(default=None), token: s
 class HookAddBody(BaseModel):
     sessionid: str
     username: str = ""
-    use_proxy: bool = True
+    use_proxy: bool | None = None   # None -> settings.proxy_auto bo'yicha (bot/panel toggle)
 
 
 @app.post("/api/hook/add-account")

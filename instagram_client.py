@@ -415,7 +415,7 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
     username_hint = (username_hint or "").strip().lstrip("@")
     proxy = (proxy or "").strip()
     manual = bool(proxy)
-    want_auto = use_proxy if use_proxy is not None else bool(config.PROXY_AUTO)
+    want_auto = use_proxy if use_proxy is not None else bool(settings.get("proxy_auto"))
     auto = (not manual) and want_auto
     if auto:
         if username_hint:
@@ -533,7 +533,7 @@ def start_login(username: str, password: str, proxy: str = "", use_proxy=None) -
         raise ValueError("Username va parol kerak")
 
     proxy = (proxy or "").strip()
-    want_auto = use_proxy if use_proxy is not None else bool(config.PROXY_AUTO)
+    want_auto = use_proxy if use_proxy is not None else bool(settings.get("proxy_auto"))
     if not proxy and want_auto:
         # Avto proxy: local modem pool yoki IPRoyal (rejimga qarab).
         proxy = auto_proxy_for(username)

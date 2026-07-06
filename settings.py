@@ -33,6 +33,7 @@ _DEFAULTS = {
     "ai_provider": os.getenv("AI_PROVIDER", "groq"),  # afzal AI (zaxira avto)
     "keepalive_interval": int(os.getenv("KEEPALIVE_INTERVAL", "43200")),
     "admin_ids": os.getenv("ADMIN_IDS", ""),  # bot orqali qo'shiladigan adminlar (vergul)
+    "proxy_auto": config.PROXY_AUTO,  # bot orqali: True=proxy bilan, False=proxysiz (mini-PC IP)
 }
 
 _cache: dict | None = None
