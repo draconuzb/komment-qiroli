@@ -231,21 +231,23 @@ def notify_dead(username: str) -> None:
 
 
 def _keepalive_worker() -> None:
-    """Kuniga bir marta har akkauntga yengil faollik (check + auto-relogin) —
-    sessiya uzoq yashaydi, tushib qolса o'zini tiklaydi. Haqiqiy o'limda xabar beradi."""
-    time.sleep(150)  # app to'liq ko'tarilsin
+    """Keep-alive — DEFAULT O'CHIQ (interval<=0). Har relogin (login_by_sessionid)
+    Instagram uchun 'login hodisasi'; ko'p relogin → flag → COOKIE O'LADI. Shuning uchun
+    avtomatik tekshirish/relogin qilmaymiz — cookie'ni tinch qoldiramiz.
+    Yoqilса (interval>0): relogin'SIZ yengil tekshiruv."""
+    time.sleep(150)
     while True:
         try:
-            interval = int(settings.get("keepalive_interval") or 43200)  # 12 soat
+            interval = int(settings.get("keepalive_interval") or 0)
+            if interval <= 0:
+                time.sleep(3600)      # o'chiq — hech narsa qilmaymiz
+                continue
             for u in [a["username"] for a in instagram_client.list_accounts()]:
                 try:
-                    was = instagram_client.get_health(u).get("alive")
-                    alive = instagram_client.check_account(u)  # auto-heal + health yangilash
-                    if was is not False and not alive:
-                        notify_dead(u)
+                    instagram_client.check_account(u, relogin=False)  # relogin YO'Q (cookie tinch)
                 except Exception:
                     pass
-                time.sleep(random.uniform(60, 150))  # akkauntlar orasida tabiiy oraliq
+                time.sleep(random.uniform(90, 180))
             time.sleep(interval)
         except Exception:
             time.sleep(600)

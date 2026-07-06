@@ -69,7 +69,7 @@ ACCOUNT_GAP_MAX = int(os.getenv("ACCOUNT_GAP_MAX", "300"))   # 5 daqiqa
 # gap_min — istalgan 2 komment orasidagi MINIMAL oraliq (butun tizim bo'ylab).
 # window — akkauntlar shu OYNA ichiga tasodifiy joylashtiriladi.
 SCHEDULE_GAP_MIN = int(os.getenv("SCHEDULE_GAP_MIN", "180"))      # 2 daqiqa (min floor; "hoziroq jo'natish" 2-4 daq uchun)
-SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "10800"))     # 2 kun
+SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "900"))     # 2 kun
 
 # Web-panel
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.

@@ -31,7 +31,7 @@ _DEFAULTS = {
     "schedule_window": config.SCHEDULE_WINDOW,
     "panel_password": config.PANEL_PASSWORD,
     "ai_provider": os.getenv("AI_PROVIDER", "groq"),  # afzal AI (zaxira avto)
-    "keepalive_interval": int(os.getenv("KEEPALIVE_INTERVAL", "43200")),
+    "keepalive_interval": int(os.getenv("KEEPALIVE_INTERVAL", "0")),
     "admin_ids": os.getenv("ADMIN_IDS", ""),  # bot orqali qo'shiladigan adminlar (vergul)
     "proxy_auto": config.PROXY_AUTO,  # bot orqali: True=proxy bilan, False=proxysiz (mini-PC IP)
 }

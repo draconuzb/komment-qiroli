@@ -212,8 +212,12 @@ def get_write_status(username: str) -> dict:
 
 
 def is_write_dead(username: str) -> bool:
-    """Oxirgi yozish urinishi auth-xato bilan tushganmi (komment bermaymiz)."""
-    return _load_write().get(username, {}).get("ok") is False
+    """Oxirgi yozish urinishi auth-xato bilan tushganmi. Lekin DOIMIY emas —
+    1 soatdan keyin qayta sinaymiz (transient/tiklangan bo'lsa ishlaydi)."""
+    e = _load_write().get(username, {})
+    if e.get("ok") is not False:
+        return False
+    return (time.time() - e.get("at", 0)) < 3600  # 1 soat skip, keyin qayta sinaladi
 
 
 def clear_write_status(username: str) -> None:

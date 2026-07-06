@@ -720,7 +720,7 @@ def hook_check(x_webhook_token: str | None = Header(default=None), token: str | 
 
     def _chk(u):
         try:
-            return u, bool(instagram_client.check_account(u, relogin=True))  # o'lganini tiklaydi
+            return u, bool(instagram_client.check_account(u, relogin=False))  # o'lganini tiklaydi
         except Exception:
             return u, False
 
