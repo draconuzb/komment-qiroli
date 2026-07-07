@@ -80,13 +80,19 @@ def enqueue(url: str, media_id: str, usernames: list[str], like: bool = True,
             source: str = "") -> dict:
     """Akkauntlarni oynaga tasodifiy, >=gap_min oraliq bilan rejalashtiradi.
     source — qaysi manba kanaldan kelgani (log uchun). Qaytaradi: {queued, first_at, last_at}."""
-    gap_min = int(settings.get("schedule_gap_min") or 180)
-    window = int(settings.get("schedule_window") or 10800)
+    gap_min = int(settings.get("schedule_gap_min") or 120)
+    gap_max = int(settings.get("schedule_gap_max") or 360)
+    window = int(settings.get("schedule_window") or 5400)
+    max_per_post = int(settings.get("max_accounts_per_post") or 8)
     # Takror himoyasi: shu media'ga ALLAQACHON komment yozgan akkauntlarni qo'shmaymiz.
     if media_id:
         usernames = [u for u in usernames if not history.already_commented(media_id, u)]
     # YOZa olmaydigan (write-dead) akkauntlarni o'tkazamiz — behuda urinish/relogin yo'q.
     usernames = [u for u in usernames if not instagram_client.is_write_dead(u)]
+    # BIR POSTGA FAQAT QISM AKKAUNT (tasodifiy) — hammasi bir postga yozsa "coordinated"
+    # (muvofiqlashtirilgan) signal bo'ladi. Tasodifiy tanlov har postda turli akkauntlar.
+    if len(usernames) > max_per_post:
+        usernames = random.sample(usernames, max_per_post)
     if not usernames:
         _tg_log(f"📥 [{source or 'panel'}] link — yoza oladigan akkaunt yo'q (yoki hammasi yozgan).\n{url}")
         return {"queued": 0, "first_at": 0, "last_at": 0}
@@ -95,15 +101,14 @@ def enqueue(url: str, media_id: str, usernames: list[str], like: bool = True,
     with _lock:
         d = _load()
         now = time.time()
-        # Bu BATCH ni HOZIRDAN boshlab oynaga tasodifiy joylaymiz (ketma-ket stack
-        # qilmaymiz — ko'p link kelsa oyna ichida ARALASHADI, 2 kunga cho'zilmaydi).
-        # Bir batch ichida >=gap_min ni majburlaymiz; BATCHLAR ORASIDAGI to'qnashuvni
-        # esa worker run-time da (>=gap_min global) hal qiladi — hech qachon 2 ta birga ketmaydi.
+        # Akkauntlarni OYNA (window) ichiga TASODIFIY tarqatamiz. Oyna uzun bo'lgani uchun
+        # offsetlar tabiiy tarqaladi. Har 2 komment orasida TASODIFIY oraliq (gap_min..gap_max)
+        # — aniq/mexanik ritm bo'lmaydi (Instagram robotik patternni sezmaydi).
         offsets = sorted(random.uniform(0, window) for _ in usernames)
         times = []
         last = now
         for off in offsets:
-            rt = max(now + off, last + gap_min)
+            rt = max(now + off, last + random.uniform(gap_min, gap_max))  # TASODIFIY gap
             times.append(rt)
             last = rt
 
@@ -256,7 +261,7 @@ def _keepalive_worker() -> None:
 def _worker() -> None:
     while True:
         try:
-            gap_min = int(settings.get("schedule_gap_min") or 180)
+            gap_min = int(settings.get("schedule_gap_min") or 120)  # global minimal (2 ta birga ketmasin)
             task = None
             with _lock:
                 d = _load()

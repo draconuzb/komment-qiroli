@@ -28,7 +28,9 @@ _DEFAULTS = {
     "account_gap_min": config.ACCOUNT_GAP_MIN,
     "account_gap_max": config.ACCOUNT_GAP_MAX,
     "schedule_gap_min": config.SCHEDULE_GAP_MIN,
+    "schedule_gap_max": config.SCHEDULE_GAP_MAX,
     "schedule_window": config.SCHEDULE_WINDOW,
+    "max_accounts_per_post": config.MAX_ACCOUNTS_PER_POST,
     "panel_password": config.PANEL_PASSWORD,
     "ai_provider": os.getenv("AI_PROVIDER", "groq"),  # afzal AI (zaxira avto)
     "keepalive_interval": int(os.getenv("KEEPALIVE_INTERVAL", "0")),

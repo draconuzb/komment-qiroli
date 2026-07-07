@@ -65,11 +65,14 @@ MAX_COMMENTS_PER_DAY = int(os.getenv("MAX_COMMENTS_PER_DAY", "30"))
 # minutli tanaffus (bloklanmaslik uchun: hammasi birdan emas, birma-bir yoziladi).
 ACCOUNT_GAP_MIN = int(os.getenv("ACCOUNT_GAP_MIN", "120"))   # 2 daqiqa
 ACCOUNT_GAP_MAX = int(os.getenv("ACCOUNT_GAP_MAX", "300"))   # 5 daqiqa
-# Global navbat (queue_mgr): kommentlar vaqtga taqsimlanadi (ban himoyasi).
-# gap_min — istalgan 2 komment orasidagi MINIMAL oraliq (butun tizim bo'ylab).
-# window — akkauntlar shu OYNA ichiga tasodifiy joylashtiriladi.
-SCHEDULE_GAP_MIN = int(os.getenv("SCHEDULE_GAP_MIN", "180"))      # 2 daqiqa (min floor; "hoziroq jo'natish" 2-4 daq uchun)
-SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "900"))     # 2 kun
+# Global navbat (queue_mgr): kommentlar TABIIY (robotik emas) vaqtga taqsimlanadi.
+# gap_min..gap_max — 2 komment orasidagi TASODIFIY oraliq (mexanik ritm bo'lmasin).
+# window — akkauntlar shu OYNA ichiga tasodifiy tarqaladi (uzun bo'lsa tabiiyroq).
+# max_accounts_per_post — bir postga faqat QISM akkaunt (coordinated signalni sindirish).
+SCHEDULE_GAP_MIN = int(os.getenv("SCHEDULE_GAP_MIN", "120"))      # 2 daqiqa (past chegara)
+SCHEDULE_GAP_MAX = int(os.getenv("SCHEDULE_GAP_MAX", "360"))      # 6 daqiqa (yuqori chegara, tasodifiy)
+SCHEDULE_WINDOW = int(os.getenv("SCHEDULE_WINDOW", "5400"))       # 90 daqiqa (tabiiy tarqalish)
+MAX_ACCOUNTS_PER_POST = int(os.getenv("MAX_ACCOUNTS_PER_POST", "8"))  # bir postga max akkaunt
 
 # Web-panel
 # Bo'sh bo'lsa — parolsiz (faqat lokal sinov uchun). Ishlatishda albatta to'ldiring.
