@@ -216,7 +216,7 @@ def _kb() -> ReplyKeyboardMarkup:
     """Doimiy rangli klaviatura — slash komanda kerak emas."""
     return ReplyKeyboardMarkup(
         [[_kbtn(B_ACCOUNTS, "primary"), _kbtn(B_QUEUE, "primary")],
-         [_kbtn(B_ADD, "success"), _kbtn(B_ACCEL, "success")],
+         [_kbtn(B_ADD, "success")],
          [_kbtn(B_SOURCES), _kbtn(B_HELP)]],
         resize_keyboard=True, is_persistent=True,
     )
@@ -716,10 +716,6 @@ async def on_private_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(_HELP, reply_markup=_kb())
     elif text == B_ADD:
         await _add_start(update, context)
-    elif text == B_ACCEL:
-        await update.message.reply_text(
-            "⚡ Kutayotgan kommentlarni HOZIROQ (2-4 daqiqa oraliq) jo'natamizmi?",
-            reply_markup=_yesno("accel_yes"))
     else:
         m = _IG_URL_RE.search(text)
         if m:
@@ -765,19 +761,17 @@ def main() -> None:
         return
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("status", status_cmd))
-    app.add_handler(CommandHandler("queue", queue_cmd))
-    app.add_handler(CommandHandler("proxy", proxy_cmd))
-    app.add_handler(CommandHandler("add", add_cmd))
-    app.add_handler(CommandHandler("foxyproxy", foxyproxy_cmd))
+    app.add_handler(CommandHandler("help", start))
+    # AI boshqaruv
     app.add_handler(CommandHandler("ai", ai_cmd))
     app.add_handler(CommandHandler("setkey", setkey_cmd))
+    # Proxy rejimi (proxy bilan / proxysiz)
     app.add_handler(CommandHandler("proxymode", proxymode_cmd))
+    # Adminlar
     app.add_handler(CommandHandler("admins", admins_cmd))
     app.add_handler(CommandHandler("addadmin", addadmin_cmd))
     app.add_handler(CommandHandler("deladmin", deladmin_cmd))
     app.add_handler(CommandHandler("myid", myid_cmd))
-    app.add_handler(CommandHandler("help", start))
     app.add_handler(CallbackQueryHandler(on_menu, pattern=r"^menu:"))
     app.add_handler(MessageHandler(filters.ChatType.CHANNEL, on_channel))
     app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, on_private_text))
