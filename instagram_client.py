@@ -82,9 +82,36 @@ class NotLoggedInError(Exception):
 
 # ---------- Yordamchilar ----------
 
+def _stable_uuids(seed: str) -> dict:
+    """Seed'dan (username/sessionid) DETERMINISTIK device uuidlar — har safar BIR XIL.
+    Instagram device fingerprint o'zgarsa sessiyani O'LDIRADI (logout_reason 9). Shuning
+    uchun har akkauntga doimiy qurilma identifikatorlari beramiz (qayta qo'shsak ham o'sha)."""
+    import uuid as _uuid
+    def _u(tag):
+        return str(_uuid.UUID(hashlib.md5(f"{seed}:{tag}".encode()).hexdigest()))
+    dev = hashlib.md5(f"{seed}:android".encode()).hexdigest()[:16]
+    return {
+        "phone_id": _u("phone"),
+        "uuid": _u("uuid"),
+        "client_session_id": _u("session"),
+        "advertising_id": _u("ad"),
+        "android_device_id": f"android-{dev}",
+        "request_id": _u("request"),
+        "tray_session_id": _u("tray"),
+    }
+
+
+def _apply_stable_device(cl: Client, username: str) -> None:
+    """Akkauntga barqaror device uuidlarni o'rnatadi (login_required/logout oldini oladi)."""
+    try:
+        cl.set_uuids(_stable_uuids(username))
+    except Exception:
+        pass
+
+
 def _new_client() -> Client:
     cl = Client()
-    cl.delay_range = [1, 2]  # instagrapi ichki so'rovlari orasida tasodifiy kechikish
+    cl.delay_range = [1, 3]  # instagrapi ichki so'rovlari orasida tasodifiy kechikish (inson kabi)
     # Har bir HTTP so'rovga timeout. Residential proxy SEKIN bo'lishi mumkin — 12s juda
     # qisqa edi (yozish timeout bo'lardi). 25s: sekin proxyga chidaydi, lekin osilib qolmaydi.
     try:
@@ -477,6 +504,21 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
             cl.set_proxy(proxy)
         except Exception as e:
             raise RuntimeError(f"Proxy noto'g'ri: {e}")
+
+    # BARQAROR DEVICE: login'dan OLDIN o'rnatamiz. Seed — sessionid ichidagi userID
+    # (o'zgarmas) yoki username_hint. Shunda qayta qo'shsak ham AYNI qurilma → Instagram
+    # "yangi qurilma" deb logout qilmaydi (logout_reason 9 ning asosiy sababi).
+    _seed = username_hint or sessionid.split("%3A")[0].split(":")[0] or sessionid[:12]
+    # Agar akkaunt allaqachon bor — ESKI device uuidlarini saqlaymiz (davomiylik).
+    _existing_path = _session_path(username_hint) if username_hint else ""
+    try:
+        if _existing_path and os.path.exists(_existing_path):
+            cl.load_settings(_existing_path)  # eski device uuidlari tiklanadi
+        else:
+            cl.set_uuids(_stable_uuids(_seed))
+    except Exception:
+        pass
+
     if not cl.login_by_sessionid(sessionid):
         raise RuntimeError("sessionid bilan kirib bo'lmadi. Cookie eskirgan yoki noto'g'ri.")
 
@@ -486,6 +528,11 @@ def add_account_by_sessionid(sessionid: str, proxy: str = "", use_proxy=None,
         username = getattr(cl, "username", "") or ""
     if not username:
         raise RuntimeError("Akkaunt nomini aniqlab bo'lmadi.")
+
+    # Username aniq — agar eski sessiya bor bo'lsa (username_hint noto'g'ri edi), uuidlarni
+    # username bo'yicha barqarorlashtiramiz (keyingi qayta ulanishlar bir xil device'da).
+    if not (username_hint and _existing_path and os.path.exists(_existing_path)):
+        _apply_stable_device(cl, username)
 
     # MUHIM: proxyni ALMASHTIRMAYMIZ. Cookie allaqachon telefon IP'sida tug'ilgan;
     # agar bu yerda yana boshqa proxy IP'ga o'tsak, sessiya 2-3 IP'ni bosib o'tadi va
